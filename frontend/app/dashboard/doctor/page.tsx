@@ -303,7 +303,7 @@ export default function DoctorDashboard() {
         message: 'John Doe has requested an appointment for tomorrow at 2:00 PM',
         time: '5 minutes ago',
         read: false,
-        priority: 'high'
+        priority: 'high',
       },
       {
         id: 2,
