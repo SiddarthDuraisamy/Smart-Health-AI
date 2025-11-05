@@ -137,6 +137,7 @@ async def create_consultation(
         consultation_type = consultation_dict.get('consultation_type', 'consultation')
         chief_complaint = consultation_dict.get('chief_complaint', 'General consultation')
         
+        # Send console notification
         notification_sent = await send_patient_notification(
             patient_email=patient_email,
             patient_name=patient_name,
@@ -145,6 +146,46 @@ async def create_consultation(
             appointment_type=consultation_type,
             chief_complaint=chief_complaint
         )
+        
+        # Send real-time notification to patient
+        try:
+            from api.routes.notifications import notifications_store
+            
+            # Create real-time notification with current UTC timestamp
+            current_utc = datetime.utcnow()
+            notification = {
+                "_id": str(ObjectId()),
+                "patient_id": str(consultation_dict["patient_id"]),
+                "title": "New Appointment Scheduled",
+                "message": f"Dr. {current_user.full_name} has scheduled an appointment for you on {scheduled_at}. Reason: {chief_complaint}",
+                "type": "appointment",
+                "from_doctor": current_user.full_name,
+                "from_doctor_id": str(current_user.id),
+                "read": False,
+                "created_at": current_utc,
+                "appointment_id": str(consultation_id),
+                "scheduled_at": scheduled_at,
+                "consultation_type": consultation_type
+            }
+            
+            print(f"⏰ Current UTC time: {current_utc}")
+            print(f"⏰ Notification timestamp: {current_utc.isoformat()}")
+            
+            # Store notification
+            patient_id_str = str(consultation_dict["patient_id"])
+            if patient_id_str not in notifications_store:
+                notifications_store[patient_id_str] = []
+            
+            notifications_store[patient_id_str].append(notification)
+            
+            print(f"🔔 REAL-TIME NOTIFICATION: Sent to patient {patient_id_str}")
+            print(f"📅 Notification created at: {notification['created_at']}")
+            print(f"👨‍⚕️ From: {notification['from_doctor']}")
+            print(f"📋 Message: {notification['message']}")
+            
+        except Exception as e:
+            print(f"⚠️ Failed to send real-time notification: {e}")
+            # Don't fail the appointment creation if notification fails
         
         return {
             "message": "Appointment created successfully",

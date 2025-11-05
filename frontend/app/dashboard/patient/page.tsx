@@ -16,6 +16,7 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
 import RealTimeChatAssistant from '../../../components/RealTimeChatAssistant'
+import NotificationBell from '../../../components/NotificationBell'
 
 interface HealthMetrics {
   overall_health_score: number
@@ -276,7 +277,7 @@ export default function PatientDashboard() {
               <span className="ml-2 text-xl font-bold text-gray-900">Smart Health</span>
             </div>
             <div className="flex items-center space-x-4">
-              <BellIcon className="h-6 w-6 text-gray-400" />
+              <NotificationBell />
               <div className="flex items-center">
                 <UserIcon className="h-8 w-8 text-gray-400 bg-gray-100 rounded-full p-1" />
                 <span className="ml-2 text-sm font-medium text-gray-700">
