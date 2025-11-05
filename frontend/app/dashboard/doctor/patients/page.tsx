@@ -38,6 +38,23 @@ export default function PatientManagement() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [showPatientModal, setShowPatientModal] = useState(false)
+  const [showAddPatientModal, setShowAddPatientModal] = useState(false)
+  const [isCreatingPatient, setIsCreatingPatient] = useState(false)
+  const [newPatientForm, setNewPatientForm] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+    phone: '',
+    date_of_birth: '',
+    gender: 'male',
+    blood_type: '',
+    address: '',
+    allergies: '',
+    medical_history: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+    emergency_contact_relationship: ''
+  })
 
   useEffect(() => {
     fetchPatients()
@@ -213,7 +230,105 @@ export default function PatientManagement() {
   }
 
   const handleAddNewPatient = () => {
-    alert('🚀 Add New Patient feature coming soon!\n\nFor now, you can see the mock patient data.')
+    setShowAddPatientModal(true)
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setNewPatientForm({
+      ...newPatientForm,
+      [e.target.name]: e.target.value
+    })
+  }
+
+  const handleCreatePatient = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreatingPatient(true)
+
+    try {
+      const token = localStorage.getItem('token')
+      
+      // First create the user account
+      const userData = {
+        email: newPatientForm.email,
+        password: newPatientForm.password,
+        full_name: newPatientForm.full_name,
+        role: 'patient',
+        phone: newPatientForm.phone || null,
+        date_of_birth: newPatientForm.date_of_birth ? new Date(newPatientForm.date_of_birth).toISOString() : null,
+        address: newPatientForm.address || null
+      }
+
+      const userResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData)
+      })
+
+      if (userResponse.ok) {
+        const createdUser = await userResponse.json()
+        console.log('User created:', createdUser)
+
+        // Then create the patient profile
+        const patientData = {
+          user_id: createdUser.user_id,
+          blood_type: newPatientForm.blood_type || null,
+          allergies: newPatientForm.allergies ? newPatientForm.allergies.split(',').map(a => a.trim()) : [],
+          medical_history: newPatientForm.medical_history ? newPatientForm.medical_history.split(',').map(h => h.trim()) : [],
+          emergency_contacts: newPatientForm.emergency_contact_name ? [{
+            name: newPatientForm.emergency_contact_name,
+            phone: newPatientForm.emergency_contact_phone,
+            relationship: newPatientForm.emergency_contact_relationship
+          }] : []
+        }
+
+        const patientResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/patients/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(patientData)
+        })
+
+        if (patientResponse.ok) {
+          alert('Patient created successfully!')
+          setShowAddPatientModal(false)
+          // Reset form
+          setNewPatientForm({
+            full_name: '',
+            email: '',
+            password: '',
+            phone: '',
+            date_of_birth: '',
+            gender: 'male',
+            blood_type: '',
+            address: '',
+            allergies: '',
+            medical_history: '',
+            emergency_contact_name: '',
+            emergency_contact_phone: '',
+            emergency_contact_relationship: ''
+          })
+          // Refresh patients list
+          fetchPatients()
+        } else {
+          const patientError = await patientResponse.json()
+          console.error('Patient creation error:', patientError)
+          alert(`Error creating patient profile: ${patientError.detail || 'Unknown error'}`)
+        }
+      } else {
+        const userError = await userResponse.json()
+        console.error('User creation error:', userError)
+        alert(`Error creating user account: ${userError.detail || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Network error:', error)
+      alert('Network error. Please check your connection and try again.')
+    } finally {
+      setIsCreatingPatient(false)
+    }
   }
 
   if (isLoading) {
@@ -265,7 +380,10 @@ export default function PatientManagement() {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
             />
           </div>
-          <button className="px-4 py-2 bg-health-primary text-white rounded-md hover:bg-blue-600 flex items-center">
+          <button 
+            onClick={handleAddNewPatient}
+            className="px-4 py-2 bg-health-primary text-white rounded-md hover:bg-blue-600 flex items-center"
+          >
             <PlusIcon className="h-5 w-5 mr-2" />
             Add New Patient
           </button>
@@ -452,6 +570,229 @@ export default function PatientManagement() {
                   Schedule Consultation
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Patient Modal */}
+      {showAddPatientModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Add New Patient</h2>
+                <button 
+                  onClick={() => setShowAddPatientModal(false)}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <form onSubmit={handleCreatePatient} className="space-y-6">
+                {/* Basic Information */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                      <input
+                        type="text"
+                        name="full_name"
+                        value={newPatientForm.full_name}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Enter patient's full name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={newPatientForm.email}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Enter email address"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                      <input
+                        type="password"
+                        name="password"
+                        value={newPatientForm.password}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Create password for patient"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={newPatientForm.phone}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Enter phone number"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        name="date_of_birth"
+                        value={newPatientForm.date_of_birth}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                      <select
+                        name="gender"
+                        value={newPatientForm.gender}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                      >
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Medical Information */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Medical Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Blood Type</label>
+                      <select
+                        name="blood_type"
+                        value={newPatientForm.blood_type}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                      >
+                        <option value="">Select blood type</option>
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                        <option value="O+">O+</option>
+                        <option value="O-">O-</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                      <input
+                        type="text"
+                        name="address"
+                        value={newPatientForm.address}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Enter address"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 mt-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Allergies</label>
+                      <textarea
+                        name="allergies"
+                        value={newPatientForm.allergies}
+                        onChange={handleFormChange}
+                        rows={2}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Enter allergies separated by commas"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Medical History</label>
+                      <textarea
+                        name="medical_history"
+                        value={newPatientForm.medical_history}
+                        onChange={handleFormChange}
+                        rows={2}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Enter medical history separated by commas"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Emergency Contact */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Emergency Contact</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
+                      <input
+                        type="text"
+                        name="emergency_contact_name"
+                        value={newPatientForm.emergency_contact_name}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Emergency contact name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Phone</label>
+                      <input
+                        type="tel"
+                        name="emergency_contact_phone"
+                        value={newPatientForm.emergency_contact_phone}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                        placeholder="Emergency contact phone"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Relationship</label>
+                      <select
+                        name="emergency_contact_relationship"
+                        value={newPatientForm.emergency_contact_relationship}
+                        onChange={handleFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-health-primary focus:border-health-primary"
+                      >
+                        <option value="">Select relationship</option>
+                        <option value="spouse">Spouse</option>
+                        <option value="parent">Parent</option>
+                        <option value="child">Child</option>
+                        <option value="sibling">Sibling</option>
+                        <option value="friend">Friend</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-6 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPatientModal(false)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+                    disabled={isCreatingPatient}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreatingPatient}
+                    className="px-4 py-2 bg-health-primary text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isCreatingPatient ? 'Creating Patient...' : 'Create Patient'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

@@ -8,7 +8,7 @@ from bson import ObjectId
 from datetime import datetime
 
 from models.user import User, UserRole
-from models.patient import Patient, PatientUpdate, VitalSigns, LifestyleData
+from models.patient import Patient, PatientCreate, PatientUpdate, VitalSigns, LifestyleData, PatientInDB, EmergencyContact
 from auth.security import get_current_active_user, require_roles
 from database.connection import get_patients_collection, get_users_collection
 
@@ -180,6 +180,71 @@ async def get_patient_by_id(
         )
     
     return Patient(**patient)
+
+@router.post("/", response_model=dict)
+async def create_patient(
+    patient_data: dict,
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.ADMIN]))
+):
+    """Create a new patient profile (doctors and admins only)"""
+    patients_collection = await get_patients_collection()
+    
+    try:
+        # Generate medical record number
+        import random
+        import string
+        mrn = "MRN" + "".join(random.choices(string.digits, k=8))
+        
+        # Process emergency contacts properly
+        emergency_contacts = []
+        if patient_data.get("emergency_contacts") and len(patient_data["emergency_contacts"]) > 0:
+            for contact in patient_data["emergency_contacts"]:
+                if isinstance(contact, dict) and contact.get("name"):
+                    emergency_contacts.append({
+                        "name": str(contact.get("name", "")),
+                        "phone": str(contact.get("phone", "")),
+                        "relationship": str(contact.get("relationship", ""))
+                    })
+        
+        # Process allergies and medical history as strings, not arrays
+        allergies_list = []
+        if patient_data.get("allergies") and isinstance(patient_data["allergies"], list):
+            allergies_list = [str(allergy) for allergy in patient_data["allergies"] if allergy]
+        
+        medical_history_list = []
+        if patient_data.get("medical_history") and isinstance(patient_data["medical_history"], list):
+            medical_history_list = [str(history) for history in patient_data["medical_history"] if history]
+        
+        # Create patient document with proper data types
+        patient_doc = {
+            "user_id": ObjectId(patient_data["user_id"]),
+            "medical_record_number": str(mrn),
+            "gender": str(patient_data.get("gender", "male")),
+            "blood_type": str(patient_data["blood_type"]) if patient_data.get("blood_type") else None,
+            "emergency_contacts": emergency_contacts,
+            "medical_history": medical_history_list,
+            "current_medications": [],
+            "allergies": allergies_list,
+            "lifestyle_data": None,
+            "insurance_info": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "vital_signs_history": []
+        }
+        
+        result = await patients_collection.insert_one(patient_doc)
+        
+        return {
+            "message": "Patient created successfully",
+            "patient_id": str(result.inserted_id),
+            "medical_record_number": mrn
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error creating patient: {str(e)}"
+        )
 
 @router.get("/", response_model=List[Patient])
 async def list_patients(
