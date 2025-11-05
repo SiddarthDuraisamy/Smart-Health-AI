@@ -20,6 +20,7 @@ import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import RealTimeChatAssistant from '../../../components/RealTimeChatAssistant'
 import NotificationBell from '../../../components/NotificationBell'
 import HealthRecordsForm from '../../../components/HealthRecordsForm'
+import MedicationManager from '../../../components/MedicationManager'
 
 interface HealthMetrics {
   overall_health_score: number
@@ -52,6 +53,8 @@ export default function PatientDashboard() {
   const [showHealthRecordsForm, setShowHealthRecordsForm] = useState(false)
   const [healthRecordsLoading, setHealthRecordsLoading] = useState(false)
   const [dynamicHealthScore, setDynamicHealthScore] = useState<number | null>(null)
+  const [showMedicationManager, setShowMedicationManager] = useState(false)
+  const [medicationReminders, setMedicationReminders] = useState<any[]>([])
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
   const [historyFilter, setHistoryFilter] = useState<'all' | 'recent' | 'older'>('all')
   const [bookingForm, setBookingForm] = useState({
@@ -67,9 +70,11 @@ export default function PatientDashboard() {
     fetchHealthAssessment()
     fetchAppointments()
     fetchCurrentHealthScore()
+    fetchMedicationReminders()
     // Auto-refresh appointments every 30 seconds for real-time updates
     const interval = setInterval(() => {
       fetchAppointments()
+      fetchMedicationReminders()
     }, 30000)
     
     return () => clearInterval(interval)
@@ -90,6 +95,22 @@ export default function PatientDashboard() {
       }
     } catch (error) {
       console.error('Error fetching health score:', error)
+    }
+  }
+
+  const fetchMedicationReminders = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/medications/reminders`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setMedicationReminders(data.reminders || [])
+      }
+    } catch (error) {
+      console.error('Error fetching medication reminders:', error)
     }
   }
 
@@ -411,17 +432,12 @@ export default function PatientDashboard() {
             <div>
               <h2 className="text-2xl font-bold mb-2">Overall Health Score</h2>
               <div className={`text-4xl font-bold text-white`}>
-                {dynamicHealthScore !== null ? `${dynamicHealthScore}/100` : 
-                 healthMetrics ? `${healthMetrics.overall_health_score}/100` : '--/100'}
+                {dynamicHealthScore !== null ? `${dynamicHealthScore}/100` : '--/100'}
               </div>
               <p className="text-blue-100 mt-2">
                 {dynamicHealthScore !== null ? (
                   dynamicHealthScore >= 80 ? 'Excellent health!' : 
                   dynamicHealthScore >= 60 ? 'Good health with room for improvement' : 
-                  'Consider consulting with a healthcare provider'
-                ) : healthMetrics ? (
-                  healthMetrics.overall_health_score >= 80 ? 'Excellent health!' : 
-                  healthMetrics.overall_health_score >= 60 ? 'Good health with room for improvement' : 
                   'Consider consulting with a healthcare provider'
                 ) : 'Add your health records to get a personalized score'}
               </p>
@@ -431,7 +447,11 @@ export default function PatientDashboard() {
                 <ShieldCheckIcon className="h-16 w-16 text-white opacity-80" />
                 <button
                   onClick={() => setShowHealthRecordsForm(true)}
-                  className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded-full transition-colors"
+                  className={`text-xs px-3 py-1 rounded-full transition-colors ${
+                    dynamicHealthScore !== null 
+                      ? 'bg-white bg-opacity-20 hover:bg-opacity-30' 
+                      : 'bg-yellow-400 text-gray-900 hover:bg-yellow-300 font-semibold animate-pulse'
+                  }`}
                 >
                   {dynamicHealthScore !== null ? 'Update Records' : 'Add Health Data'}
                 </button>
@@ -783,7 +803,7 @@ export default function PatientDashboard() {
                       <p className="text-xs text-gray-600">Current</p>
                     </div>
                   </div>
-                  <span className="text-lg font-bold text-purple-600">{healthMetrics?.overall_health_score || 85}/100</span>
+                  <span className="text-lg font-bold text-purple-600">{dynamicHealthScore || '--'}/100</span>
                 </div>
               </div>
             </div>
@@ -792,31 +812,65 @@ export default function PatientDashboard() {
             <div className="health-card">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Medication Reminders</h3>
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                      <span className="text-yellow-600 font-bold text-sm">💊</span>
+                {medicationReminders.length === 0 ? (
+                  <div className="text-center py-6">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-gray-400 text-xl">💊</span>
                     </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">Vitamin D</p>
-                      <p className="text-xs text-gray-600">Take with breakfast</p>
-                    </div>
+                    <p className="text-gray-600 text-sm">No medications added</p>
+                    <p className="text-xs text-gray-500 mt-1">Add your medications to get reminders</p>
                   </div>
-                  <span className="text-xs text-yellow-600 font-medium">Due</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-l-4 border-green-400">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                      <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                ) : (
+                  medicationReminders.slice(0, 3).map((reminder, index) => (
+                    <div 
+                      key={`${reminder.medication_id}_${reminder.reminder_time}`}
+                      className={`flex items-center justify-between p-3 rounded-lg border-l-4 ${
+                        reminder.is_taken 
+                          ? 'bg-green-50 border-green-400' 
+                          : reminder.is_due 
+                          ? 'bg-yellow-50 border-yellow-400' 
+                          : 'bg-gray-50 border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          reminder.is_taken 
+                            ? 'bg-green-100' 
+                            : reminder.is_due 
+                            ? 'bg-yellow-100' 
+                            : 'bg-gray-100'
+                        }`}>
+                          {reminder.is_taken ? (
+                            <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                          ) : (
+                            <span className={`font-bold text-sm ${
+                              reminder.is_due ? 'text-yellow-600' : 'text-gray-400'
+                            }`}>💊</span>
+                          )}
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm font-medium text-gray-900">{reminder.medication_name}</p>
+                          <p className="text-xs text-gray-600">
+                            {reminder.instructions || `${reminder.dosage} at ${reminder.reminder_time}`}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`text-xs font-medium ${
+                        reminder.is_taken 
+                          ? 'text-green-600' 
+                          : reminder.is_due 
+                          ? 'text-yellow-600' 
+                          : 'text-gray-500'
+                      }`}>
+                        {reminder.is_taken ? 'Done' : reminder.is_due ? 'Due' : 'Upcoming'}
+                      </span>
                     </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">Multivitamin</p>
-                      <p className="text-xs text-gray-600">Taken at 8:00 AM</p>
-                    </div>
-                  </div>
-                  <span className="text-xs text-green-600 font-medium">Done</span>
-                </div>
-                <button className="w-full mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 rounded-lg py-2 hover:bg-blue-50">
+                  ))
+                )}
+                <button 
+                  onClick={() => setShowMedicationManager(true)}
+                  className="w-full mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 rounded-lg py-2 hover:bg-blue-50"
+                >
                   Manage Medications
                 </button>
               </div>
@@ -956,6 +1010,16 @@ export default function PatientDashboard() {
           onClose={() => setShowHealthRecordsForm(false)}
           onSubmit={handleHealthRecordsSubmit}
           isLoading={healthRecordsLoading}
+        />
+      )}
+
+      {/* Medication Manager */}
+      {showMedicationManager && (
+        <MedicationManager
+          onClose={() => {
+            setShowMedicationManager(false)
+            fetchMedicationReminders() // Refresh reminders when closing
+          }}
         />
       )}
     </div>

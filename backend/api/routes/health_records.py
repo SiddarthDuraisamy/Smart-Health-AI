@@ -5,9 +5,10 @@ from pydantic import BaseModel, Field
 from bson import ObjectId
 from database.connection import get_database
 from auth.security import get_current_user
+from models.user import User
 import math
 
-router = APIRouter(prefix="/health-records", tags=["health-records"])
+router = APIRouter(tags=["health-records"])
 
 class HealthRecord(BaseModel):
     # Basic vitals
@@ -180,7 +181,7 @@ def calculate_health_score(record: HealthRecord) -> float:
 @router.post("/", response_model=HealthRecordResponse)
 async def create_health_record(
     record: HealthRecord,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db = Depends(get_database)
 ):
     """Create a new health record for the current user"""
@@ -195,7 +196,7 @@ async def create_health_record(
     
     # Prepare document for insertion
     record_dict = record.dict()
-    record_dict["user_id"] = current_user["_id"]
+    record_dict["user_id"] = ObjectId(current_user.id)
     record_dict["calculated_bmi"] = bmi
     record_dict["health_score"] = health_score
     
@@ -211,13 +212,13 @@ async def create_health_record(
 
 @router.get("/latest", response_model=Optional[HealthRecordResponse])
 async def get_latest_health_record(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db = Depends(get_database)
 ):
     """Get the most recent health record for the current user"""
     
     record = await db.health_records.find_one(
-        {"user_id": ObjectId(current_user["_id"])},
+        {"user_id": ObjectId(current_user.id)},
         sort=[("recorded_at", -1)]
     )
     
@@ -232,13 +233,13 @@ async def get_latest_health_record(
 @router.get("/", response_model=List[HealthRecordResponse])
 async def get_health_records(
     limit: int = 10,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db = Depends(get_database)
 ):
     """Get health records for the current user"""
     
     cursor = db.health_records.find(
-        {"user_id": ObjectId(current_user["_id"])}
+        {"user_id": ObjectId(current_user.id)}
     ).sort("recorded_at", -1).limit(limit)
     
     records = []
@@ -251,13 +252,13 @@ async def get_health_records(
 
 @router.get("/health-score")
 async def get_current_health_score(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db = Depends(get_database)
 ):
     """Get the current health score for the user"""
     
     latest_record = await db.health_records.find_one(
-        {"user_id": ObjectId(current_user["_id"])},
+        {"user_id": ObjectId(current_user.id)},
         sort=[("recorded_at", -1)]
     )
     
@@ -277,14 +278,14 @@ async def get_current_health_score(
 @router.delete("/{record_id}")
 async def delete_health_record(
     record_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db = Depends(get_database)
 ):
     """Delete a health record"""
     
     result = await db.health_records.delete_one({
         "_id": ObjectId(record_id),
-        "user_id": ObjectId(current_user["_id"])
+        "user_id": ObjectId(current_user.id)
     })
     
     if result.deleted_count == 0:
