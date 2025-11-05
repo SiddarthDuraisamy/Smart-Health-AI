@@ -53,6 +53,7 @@ export default function PatientDashboard() {
   const [showHealthRecordsForm, setShowHealthRecordsForm] = useState(false)
   const [healthRecordsLoading, setHealthRecordsLoading] = useState(false)
   const [dynamicHealthScore, setDynamicHealthScore] = useState<number | null>(null)
+  const [latestHealthRecord, setLatestHealthRecord] = useState<any>(null)
   const [showMedicationManager, setShowMedicationManager] = useState(false)
   const [medicationReminders, setMedicationReminders] = useState<any[]>([])
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
@@ -69,32 +70,43 @@ export default function PatientDashboard() {
     fetchUserData()
     fetchHealthAssessment()
     fetchAppointments()
-    fetchCurrentHealthScore()
     fetchMedicationReminders()
+    fetchLatestHealthRecord()
     // Auto-refresh appointments every 30 seconds for real-time updates
     const interval = setInterval(() => {
       fetchAppointments()
       fetchMedicationReminders()
+      fetchLatestHealthRecord()
     }, 30000)
     
     return () => clearInterval(interval)
   }, [])
 
-  const fetchCurrentHealthScore = async () => {
+  const fetchLatestHealthRecord = async () => {
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/health-records/health-score`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/health-records/latest`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       })
-      
       if (response.ok) {
         const data = await response.json()
-        if (data.health_score !== null) {
+        setLatestHealthRecord(data)
+        // Use the same record for health score to ensure consistency
+        if (data && data.health_score !== null) {
           setDynamicHealthScore(data.health_score)
         }
+        console.log('📊 Latest health record:', data)
+      } else {
+        // No health records found
+        setLatestHealthRecord(null)
+        setDynamicHealthScore(null)
       }
     } catch (error) {
-      console.error('Error fetching health score:', error)
+      console.error('Error fetching latest health record:', error)
+      setLatestHealthRecord(null)
+      setDynamicHealthScore(null)
     }
   }
 
@@ -102,7 +114,9 @@ export default function PatientDashboard() {
     try {
       const token = localStorage.getItem('token')
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/medications/reminders`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       })
       
       if (response.ok) {
@@ -273,7 +287,7 @@ export default function PatientDashboard() {
           {
             name: bookingForm.symptoms,
             severity: 5,
-            duration: "recent",
+            duration: "1 week",
             description: bookingForm.symptoms
           }
         ] : []
@@ -350,8 +364,9 @@ export default function PatientDashboard() {
         // Show success message
         alert(`Health score updated! Your new score is ${data.health_score}/100`)
         
-        // Refresh health assessment to get updated metrics
+        // Refresh health assessment and health record to get updated metrics
         await fetchHealthAssessment()
+        await fetchLatestHealthRecord()
       } else {
         throw new Error('Failed to submit health records')
       }
@@ -464,41 +479,111 @@ export default function PatientDashboard() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
             {/* Risk Assessment */}
-            {healthMetrics && (
-              <div className="health-card">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Health Risk Assessment</h3>
+            <div className="health-card">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Health Risk Assessment</h3>
+              {dynamicHealthScore !== null ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {Object.entries(healthMetrics.risk_predictions).map(([condition, risk]) => (
-                    <div key={condition} className="border rounded-lg p-4">
-                      <h4 className="font-medium text-gray-900 capitalize mb-2">
-                        {condition.replace('_', ' ')}
-                      </h4>
-                      <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getRiskColor(risk.risk_level)}`}>
-                        {risk.risk_level} Risk
-                      </div>
-                      <p className="text-sm text-gray-600 mt-2">
-                        {Math.round(risk.probability * 100)}% probability
-                      </p>
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 capitalize mb-2">Diabetes</h4>
+                    <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                      dynamicHealthScore >= 80 ? 'bg-green-100 text-green-800' :
+                      dynamicHealthScore >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {dynamicHealthScore >= 80 ? 'Low' : dynamicHealthScore >= 60 ? 'Medium' : 'High'} Risk
                     </div>
-                  ))}
+                    <p className="text-sm text-gray-600 mt-2">
+                      Based on your health data
+                    </p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 capitalize mb-2">Hypertension</h4>
+                    <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                      dynamicHealthScore >= 80 ? 'bg-green-100 text-green-800' :
+                      dynamicHealthScore >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {dynamicHealthScore >= 80 ? 'Low' : dynamicHealthScore >= 60 ? 'Medium' : 'High'} Risk
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      Based on your health data
+                    </p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 capitalize mb-2">Heart Disease</h4>
+                    <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                      dynamicHealthScore >= 80 ? 'bg-green-100 text-green-800' :
+                      dynamicHealthScore >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {dynamicHealthScore >= 80 ? 'Low' : dynamicHealthScore >= 60 ? 'Medium' : 'High'} Risk
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      Based on your health data
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-gray-400 text-2xl">📊</span>
+                  </div>
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">No Risk Assessment Available</h4>
+                  <p className="text-gray-600 mb-4">Add your health records to get a personalized risk assessment</p>
+                  <button
+                    onClick={() => setShowHealthRecordsForm(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Add Health Data
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* AI Recommendations */}
-            {healthMetrics && (
-              <div className="health-card">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Personalized Recommendations</h3>
+            <div className="health-card">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Personalized Recommendations</h3>
+              {dynamicHealthScore !== null ? (
                 <div className="space-y-3">
-                  {healthMetrics.recommendations.map((recommendation, index) => (
-                    <div key={index} className="flex items-start">
-                      <div className="flex-shrink-0 w-2 h-2 bg-health-primary rounded-full mt-2"></div>
-                      <p className="ml-3 text-gray-700">{recommendation}</p>
-                    </div>
-                  ))}
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0 w-2 h-2 bg-health-primary rounded-full mt-2"></div>
+                    <p className="ml-3 text-gray-700">
+                      {dynamicHealthScore >= 80 
+                        ? "Maintain your excellent health habits! Continue regular exercise and balanced nutrition."
+                        : dynamicHealthScore >= 60
+                        ? "Focus on improving your lifestyle habits. Consider increasing physical activity and monitoring your diet."
+                        : "Consult with a healthcare provider to develop a comprehensive health improvement plan."
+                      }
+                    </p>
+                  </div>
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0 w-2 h-2 bg-health-primary rounded-full mt-2"></div>
+                    <p className="ml-3 text-gray-700">
+                      Regular health monitoring and check-ups are important for maintaining optimal health.
+                    </p>
+                  </div>
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0 w-2 h-2 bg-health-primary rounded-full mt-2"></div>
+                    <p className="ml-3 text-gray-700">
+                      Keep your health records updated to receive more accurate recommendations.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <span className="text-gray-400 text-xl">💡</span>
+                  </div>
+                  <p className="text-gray-600 mb-4">Add your health data to get personalized AI recommendations</p>
+                  <button
+                    onClick={() => setShowHealthRecordsForm(true)}
+                    className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                  >
+                    Add Health Data →
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Quick Actions */}
             <div className="health-card">
@@ -530,28 +615,54 @@ export default function PatientDashboard() {
             {/* Health Metrics Overview */}
             <div className="health-card">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Health Metrics</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <HeartIcon className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">Heart Rate</p>
-                  <p className="text-lg font-semibold text-gray-900">72 BPM</p>
+              {latestHealthRecord ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <HeartIcon className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">Heart Rate</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {latestHealthRecord.heart_rate ? `${latestHealthRecord.heart_rate} BPM` : '--'}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <ChartBarIcon className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">Blood Pressure</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {latestHealthRecord.blood_pressure_systolic && latestHealthRecord.blood_pressure_diastolic 
+                        ? `${latestHealthRecord.blood_pressure_systolic}/${latestHealthRecord.blood_pressure_diastolic}` 
+                        : '--'}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                    <ClockIcon className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">Sleep</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {latestHealthRecord.sleep_hours_per_night ? `${latestHealthRecord.sleep_hours_per_night} hrs` : '--'}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <UserIcon className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">BMI</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {latestHealthRecord.calculated_bmi ? latestHealthRecord.calculated_bmi.toFixed(1) : '--'}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <ChartBarIcon className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">Blood Pressure</p>
-                  <p className="text-lg font-semibold text-gray-900">120/80</p>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-gray-400 text-2xl">📊</span>
+                  </div>
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">No Health Metrics Available</h4>
+                  <p className="text-gray-600 mb-4">Add your health records to see your vital signs and metrics</p>
+                  <button
+                    onClick={() => setShowHealthRecordsForm(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Add Health Data
+                  </button>
                 </div>
-                <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                  <ClockIcon className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">Sleep</p>
-                  <p className="text-lg font-semibold text-gray-900">7.5 hrs</p>
-                </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <UserIcon className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">BMI</p>
-                  <p className="text-lg font-semibold text-gray-900">23.4</p>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Wellness Tips */}

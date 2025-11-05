@@ -17,6 +17,11 @@ interface HealthRecord {
   blood_pressure_diastolic?: number
   heart_rate?: number
   
+  // Additional vitals
+  body_temperature?: number
+  respiratory_rate?: number
+  oxygen_saturation?: number
+  
   // Lifestyle factors
   exercise_hours_per_week?: number
   sleep_hours_per_night?: number
@@ -24,18 +29,45 @@ interface HealthRecord {
   smoking_status?: string
   alcohol_consumption?: string
   
+  // Diet and nutrition
+  diet_type?: string
+  meals_per_day?: number
+  fruit_vegetable_servings?: number
+  
   // Medical history
   diabetes?: boolean
   hypertension?: boolean
   heart_disease?: boolean
   
+  // Additional medical conditions
+  asthma?: boolean
+  arthritis?: boolean
+  depression?: boolean
+  anxiety?: boolean
+  
+  // Family history
+  family_diabetes?: boolean
+  family_heart_disease?: boolean
+  family_cancer?: boolean
+  
   // Lab values
   cholesterol_total?: number
   blood_sugar_fasting?: number
   
+  // Additional lab values
+  cholesterol_hdl?: number
+  cholesterol_ldl?: number
+  triglycerides?: number
+  hemoglobin?: number
+  
   // Subjective measures
   stress_level?: number
   energy_level?: number
+  
+  // Additional wellness metrics
+  sleep_quality?: number
+  pain_level?: number
+  mood_level?: number
 }
 
 export default function HealthRecordsForm({ onClose, onSubmit, isLoading = false }: HealthRecordsFormProps) {
@@ -163,6 +195,55 @@ export default function HealthRecordsForm({ onClose, onSubmit, isLoading = false
                   placeholder="e.g., 80"
                 />
               </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Body Temperature (°C)
+                </label>
+                <input
+                  type="number"
+                  name="body_temperature"
+                  value={formData.body_temperature || ''}
+                  onChange={handleInputChange}
+                  step="0.1"
+                  min="35"
+                  max="42"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 36.5"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Respiratory Rate (breaths/min)
+                </label>
+                <input
+                  type="number"
+                  name="respiratory_rate"
+                  value={formData.respiratory_rate || ''}
+                  onChange={handleInputChange}
+                  min="8"
+                  max="40"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 16"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Oxygen Saturation (%)
+                </label>
+                <input
+                  type="number"
+                  name="oxygen_saturation"
+                  value={formData.oxygen_saturation || ''}
+                  onChange={handleInputChange}
+                  min="70"
+                  max="100"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 98"
+                />
+              </div>
             </div>
           </div>
 
@@ -252,6 +333,58 @@ export default function HealthRecordsForm({ onClose, onSubmit, isLoading = false
                   <option value="heavy">Heavy (8+ drinks/week)</option>
                 </select>
               </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Diet Type
+                </label>
+                <select
+                  name="diet_type"
+                  value={formData.diet_type || 'balanced'}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="balanced">Balanced</option>
+                  <option value="vegetarian">Vegetarian</option>
+                  <option value="vegan">Vegan</option>
+                  <option value="keto">Keto</option>
+                  <option value="mediterranean">Mediterranean</option>
+                  <option value="low_carb">Low Carb</option>
+                  <option value="high_protein">High Protein</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Meals per Day
+                </label>
+                <input
+                  type="number"
+                  name="meals_per_day"
+                  value={formData.meals_per_day || ''}
+                  onChange={handleInputChange}
+                  min="1"
+                  max="8"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 3"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Fruit & Vegetable Servings/day
+                </label>
+                <input
+                  type="number"
+                  name="fruit_vegetable_servings"
+                  value={formData.fruit_vegetable_servings || ''}
+                  onChange={handleInputChange}
+                  min="0"
+                  max="15"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 5"
+                />
+              </div>
             </div>
           </div>
 
@@ -298,6 +431,66 @@ export default function HealthRecordsForm({ onClose, onSubmit, isLoading = false
                   <span>High (10)</span>
                 </div>
               </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Sleep Quality (1-10)
+                </label>
+                <input
+                  type="range"
+                  name="sleep_quality"
+                  value={formData.sleep_quality || 5}
+                  onChange={handleInputChange}
+                  min="1"
+                  max="10"
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>Poor (1)</span>
+                  <span className="font-medium">{formData.sleep_quality || 5}</span>
+                  <span>Excellent (10)</span>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pain Level (1-10)
+                </label>
+                <input
+                  type="range"
+                  name="pain_level"
+                  value={formData.pain_level || 1}
+                  onChange={handleInputChange}
+                  min="1"
+                  max="10"
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>None (1)</span>
+                  <span className="font-medium">{formData.pain_level || 1}</span>
+                  <span>Severe (10)</span>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Mood Level (1-10)
+                </label>
+                <input
+                  type="range"
+                  name="mood_level"
+                  value={formData.mood_level || 5}
+                  onChange={handleInputChange}
+                  min="1"
+                  max="10"
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>Low (1)</span>
+                  <span className="font-medium">{formData.mood_level || 5}</span>
+                  <span>High (10)</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -337,6 +530,89 @@ export default function HealthRecordsForm({ onClose, onSubmit, isLoading = false
                 />
                 <span className="ml-2 text-sm text-gray-700">Heart Disease</span>
               </label>
+              
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="asthma"
+                  checked={formData.asthma || false}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Asthma</span>
+              </label>
+              
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="arthritis"
+                  checked={formData.arthritis || false}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Arthritis</span>
+              </label>
+              
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="depression"
+                  checked={formData.depression || false}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Depression</span>
+              </label>
+              
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="anxiety"
+                  checked={formData.anxiety || false}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Anxiety</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Family History */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Family History</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="family_diabetes"
+                  checked={formData.family_diabetes || false}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Family Diabetes</span>
+              </label>
+              
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="family_heart_disease"
+                  checked={formData.family_heart_disease || false}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Family Heart Disease</span>
+              </label>
+              
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="family_cancer"
+                  checked={formData.family_cancer || false}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Family Cancer</span>
+              </label>
             </div>
           </div>
 
@@ -373,6 +649,71 @@ export default function HealthRecordsForm({ onClose, onSubmit, isLoading = false
                   max="400"
                   className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="e.g., 95"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  HDL Cholesterol (mg/dL)
+                </label>
+                <input
+                  type="number"
+                  name="cholesterol_hdl"
+                  value={formData.cholesterol_hdl || ''}
+                  onChange={handleInputChange}
+                  min="20"
+                  max="150"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 50"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  LDL Cholesterol (mg/dL)
+                </label>
+                <input
+                  type="number"
+                  name="cholesterol_ldl"
+                  value={formData.cholesterol_ldl || ''}
+                  onChange={handleInputChange}
+                  min="50"
+                  max="300"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 100"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Triglycerides (mg/dL)
+                </label>
+                <input
+                  type="number"
+                  name="triglycerides"
+                  value={formData.triglycerides || ''}
+                  onChange={handleInputChange}
+                  min="30"
+                  max="1000"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 150"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hemoglobin (g/dL)
+                </label>
+                <input
+                  type="number"
+                  name="hemoglobin"
+                  value={formData.hemoglobin || ''}
+                  onChange={handleInputChange}
+                  step="0.1"
+                  min="8"
+                  max="20"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="e.g., 14.5"
                 />
               </div>
             </div>

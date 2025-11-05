@@ -18,6 +18,11 @@ class HealthRecord(BaseModel):
     blood_pressure_diastolic: Optional[int] = Field(None, description="Diastolic BP")
     heart_rate: Optional[int] = Field(None, description="Heart rate BPM")
     
+    # Additional vitals
+    body_temperature: Optional[float] = Field(None, description="Body temperature in Celsius")
+    respiratory_rate: Optional[int] = Field(None, description="Respiratory rate breaths/min")
+    oxygen_saturation: Optional[int] = Field(None, description="Oxygen saturation percentage")
+    
     # Lifestyle factors
     exercise_hours_per_week: Optional[float] = Field(None, description="Exercise hours per week")
     sleep_hours_per_night: Optional[float] = Field(None, description="Average sleep hours")
@@ -25,18 +30,45 @@ class HealthRecord(BaseModel):
     smoking_status: Optional[str] = Field(None, description="never/former/current")
     alcohol_consumption: Optional[str] = Field(None, description="none/light/moderate/heavy")
     
+    # Diet and nutrition
+    diet_type: Optional[str] = Field(None, description="Diet type")
+    meals_per_day: Optional[int] = Field(None, description="Number of meals per day")
+    fruit_vegetable_servings: Optional[int] = Field(None, description="Fruit and vegetable servings per day")
+    
     # Medical history
     diabetes: Optional[bool] = Field(False, description="Has diabetes")
     hypertension: Optional[bool] = Field(False, description="Has hypertension")
     heart_disease: Optional[bool] = Field(False, description="Has heart disease")
     
+    # Additional medical conditions
+    asthma: Optional[bool] = Field(False, description="Has asthma")
+    arthritis: Optional[bool] = Field(False, description="Has arthritis")
+    depression: Optional[bool] = Field(False, description="Has depression")
+    anxiety: Optional[bool] = Field(False, description="Has anxiety")
+    
+    # Family history
+    family_diabetes: Optional[bool] = Field(False, description="Family history of diabetes")
+    family_heart_disease: Optional[bool] = Field(False, description="Family history of heart disease")
+    family_cancer: Optional[bool] = Field(False, description="Family history of cancer")
+    
     # Lab values (optional)
     cholesterol_total: Optional[float] = Field(None, description="Total cholesterol mg/dL")
     blood_sugar_fasting: Optional[float] = Field(None, description="Fasting blood sugar mg/dL")
     
+    # Additional lab values
+    cholesterol_hdl: Optional[float] = Field(None, description="HDL cholesterol mg/dL")
+    cholesterol_ldl: Optional[float] = Field(None, description="LDL cholesterol mg/dL")
+    triglycerides: Optional[float] = Field(None, description="Triglycerides mg/dL")
+    hemoglobin: Optional[float] = Field(None, description="Hemoglobin g/dL")
+    
     # Subjective measures
     stress_level: Optional[int] = Field(None, ge=1, le=10, description="Stress level 1-10")
     energy_level: Optional[int] = Field(None, ge=1, le=10, description="Energy level 1-10")
+    
+    # Additional wellness metrics
+    sleep_quality: Optional[int] = Field(None, ge=1, le=10, description="Sleep quality 1-10")
+    pain_level: Optional[int] = Field(None, ge=1, le=10, description="Pain level 1-10")
+    mood_level: Optional[int] = Field(None, ge=1, le=10, description="Mood level 1-10")
     
     recorded_at: datetime = Field(default_factory=datetime.now)
 
@@ -159,12 +191,106 @@ def calculate_health_score(record: HealthRecord) -> float:
         wellbeing_score = stress_impact + energy_impact
         score = score - 10 + wellbeing_score
     
-    # Lab Values Bonus (5 points max)
+    # Additional Medical Conditions Penalty
+    if record.asthma:
+        conditions_penalty += 2
+    if record.arthritis:
+        conditions_penalty += 2
+    if record.depression:
+        conditions_penalty += 3
+    if record.anxiety:
+        conditions_penalty += 2
+    
+    # Family History Risk Factor (3 points max penalty)
+    family_risk = 0
+    if record.family_diabetes:
+        family_risk += 1
+    if record.family_heart_disease:
+        family_risk += 1.5
+    if record.family_cancer:
+        family_risk += 0.5
+    
+    score = score - min(3, family_risk)
+    
+    # Additional Vital Signs (5 points max)
+    vitals_bonus = 5
+    if record.body_temperature is not None:
+        temp = record.body_temperature
+        if not (36.1 <= temp <= 37.2):  # Normal range
+            vitals_bonus -= 1
+    
+    if record.respiratory_rate is not None:
+        rr = record.respiratory_rate
+        if not (12 <= rr <= 20):  # Normal range
+            vitals_bonus -= 1
+    
+    if record.oxygen_saturation is not None:
+        o2 = record.oxygen_saturation
+        if o2 < 95:  # Low oxygen saturation
+            vitals_bonus -= 2
+        elif o2 < 98:
+            vitals_bonus -= 1
+    
+    score = score - 5 + max(0, vitals_bonus)
+    
+    # Nutrition and Diet (5 points max)
+    nutrition_score = 0
+    if record.fruit_vegetable_servings is not None:
+        servings = record.fruit_vegetable_servings
+        if servings >= 5:  # Recommended daily intake
+            nutrition_score += 3
+        elif servings >= 3:
+            nutrition_score += 2
+        elif servings >= 1:
+            nutrition_score += 1
+    
+    if record.water_intake_glasses is not None:
+        water = record.water_intake_glasses
+        if water >= 8:  # Recommended daily intake
+            nutrition_score += 2
+        elif water >= 6:
+            nutrition_score += 1
+    
+    score = score + min(5, nutrition_score)
+    
+    # Additional Wellness Metrics (5 points max)
+    wellness_bonus = 0
+    if record.sleep_quality is not None:
+        if record.sleep_quality >= 8:
+            wellness_bonus += 2
+        elif record.sleep_quality >= 6:
+            wellness_bonus += 1
+    
+    if record.mood_level is not None:
+        if record.mood_level >= 8:
+            wellness_bonus += 2
+        elif record.mood_level >= 6:
+            wellness_bonus += 1
+    
+    if record.pain_level is not None:
+        if record.pain_level <= 3:  # Low pain
+            wellness_bonus += 1
+    
+    score = score + min(5, wellness_bonus)
+    
+    # Lab Values Bonus (8 points max - expanded)
     lab_bonus = 0
     if record.cholesterol_total is not None:
         if record.cholesterol_total < 200:  # Desirable
             lab_bonus += 2
         elif record.cholesterol_total < 240:  # Borderline
+            lab_bonus += 1
+    
+    if record.cholesterol_hdl is not None:
+        if record.cholesterol_hdl >= 60:  # High (protective)
+            lab_bonus += 2
+        elif record.cholesterol_hdl >= 40:  # Normal
+            lab_bonus += 1
+    
+    if record.cholesterol_ldl is not None:
+        if record.cholesterol_ldl < 100:  # Optimal
+            lab_bonus += 2
+        elif record.cholesterol_ldl < 130:  # Near optimal
             lab_bonus += 1
     
     if record.blood_sugar_fasting is not None:
@@ -173,7 +299,7 @@ def calculate_health_score(record: HealthRecord) -> float:
         elif record.blood_sugar_fasting < 126:  # Prediabetes
             lab_bonus += 1
     
-    score = score - 5 + min(5, lab_bonus)
+    score = score - 8 + min(8, lab_bonus)
     
     # Ensure score is between 0 and 100
     return round(max(0, min(100, score)), 1)
