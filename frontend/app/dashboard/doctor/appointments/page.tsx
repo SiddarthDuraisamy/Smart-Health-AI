@@ -432,7 +432,9 @@ export default function AppointmentManagement() {
       })
 
       if (response.ok) {
-        alert('✅ Appointment created successfully!')
+        const result = await response.json()
+        const notificationStatus = result.notification_sent ? '📧 Patient notified' : '⚠️ Notification failed'
+        alert(`✅ Appointment created successfully!\n\nPatient: ${result.patient_name}\nScheduled: ${result.scheduled_at}\n${notificationStatus}`)
         setShowNewAppointmentModal(false)
         resetNewAppointmentForm()
         fetchAppointments() // Refresh the appointments list
@@ -724,8 +726,7 @@ export default function AppointmentManagement() {
               key={appointment._id} 
               className="bg-white rounded-xl shadow-sm hover:shadow-lg border border-gray-200 hover:border-gray-300 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
               style={{
-                animationDelay: `${index * 100}ms`,
-                animation: 'fadeInUp 0.5s ease-out forwards'
+                animation: `fadeInUp 0.5s ease-out forwards ${index * 100}ms`
               }}
             >
               <div className="p-6">

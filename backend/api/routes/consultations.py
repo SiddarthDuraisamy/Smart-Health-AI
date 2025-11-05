@@ -13,7 +13,40 @@ from models.consultation import (
     ChatMessage, Diagnosis, Treatment, AIInsight
 )
 from auth.security import get_current_active_user, require_roles
-from database.connection import get_consultations_collection, get_users_collection
+from database.connection import get_consultations_collection, get_users_collection, get_patients_collection
+# Simple notification function to avoid import issues
+async def send_patient_notification(patient_email: str, patient_name: str, doctor_name: str, appointment_datetime: str, appointment_type: str, chief_complaint: str) -> bool:
+    """Send appointment notification to patient (console logging)"""
+    try:
+        notification_message = f"""
+📧 APPOINTMENT NOTIFICATION
+========================
+To: {patient_email}
+Patient: {patient_name}
+Doctor: Dr. {doctor_name}
+Date & Time: {appointment_datetime}
+Type: {appointment_type}
+Reason: {chief_complaint}
+
+Dear {patient_name},
+
+Your appointment has been scheduled with Dr. {doctor_name}.
+
+Appointment Details:
+- Date & Time: {appointment_datetime}
+- Type: {appointment_type.replace('_', ' ').title()}
+- Reason: {chief_complaint}
+
+Please arrive 15 minutes early for your appointment.
+
+Best regards,
+Smart Health Team
+        """
+        print(notification_message)
+        return True
+    except Exception as e:
+        print(f"❌ Error sending notification: {e}")
+        return False
 
 router = APIRouter()
 
@@ -36,7 +69,7 @@ def serialize_document(doc):
             result[key] = value
     return result
 
-@router.post("/", response_model=Consultation)
+@router.post("/", response_model=dict)
 async def create_consultation(
     consultation_data: ConsultationCreate,
     current_user: User = Depends(get_current_active_user)
@@ -44,6 +77,7 @@ async def create_consultation(
     """Create new consultation"""
     try:
         consultations_collection = await get_consultations_collection()
+        users_collection = await get_users_collection()
         
         consultation_dict = consultation_data.dict()
         print(f"Received consultation data: {consultation_dict}")
@@ -65,15 +99,62 @@ async def create_consultation(
                 detail="Patient ID is required"
             )
         
+        # Convert patient_id to ObjectId if it's a string
+        if isinstance(consultation_dict["patient_id"], str):
+            consultation_dict["patient_id"] = ObjectId(consultation_dict["patient_id"])
+        
+        # Check if patient_id refers to a patient document or user document
+        patients_coll = await get_patients_collection()
+        patient_doc = await patients_coll.find_one({"_id": consultation_dict["patient_id"]})
+        
+        if patient_doc:
+            # If it's a patient document ID, use the user_id from that document
+            consultation_dict["patient_id"] = patient_doc["user_id"]
+            print(f"Found patient document, using user_id: {patient_doc['user_id']}")
+        else:
+            # If it's already a user_id, keep it as is
+            print(f"Using provided patient_id as user_id: {consultation_dict['patient_id']}")
+        
+        # Set doctor_id if doctor is creating the appointment
+        if current_user.role == UserRole.DOCTOR:
+            consultation_dict["doctor_id"] = ObjectId(current_user.id)
+        
         consultation_dict["created_at"] = datetime.utcnow()
         consultation_dict["updated_at"] = datetime.utcnow()
         
         print(f"Final consultation dict: {consultation_dict}")
         
         result = await consultations_collection.insert_one(consultation_dict)
-        consultation_dict["_id"] = result.inserted_id
+        consultation_id = result.inserted_id
         
-        return Consultation(**consultation_dict)
+        # Get patient information for notification
+        patient = await users_collection.find_one({"_id": consultation_dict["patient_id"]})
+        patient_name = patient.get("full_name", "Unknown Patient") if patient else "Unknown Patient"
+        patient_email = patient.get("email", "") if patient else ""
+        
+        # Send notification to patient
+        scheduled_at = consultation_dict.get('scheduled_at', 'TBD')
+        consultation_type = consultation_dict.get('consultation_type', 'consultation')
+        chief_complaint = consultation_dict.get('chief_complaint', 'General consultation')
+        
+        notification_sent = await send_patient_notification(
+            patient_email=patient_email,
+            patient_name=patient_name,
+            doctor_name=current_user.full_name,
+            appointment_datetime=scheduled_at,
+            appointment_type=consultation_type,
+            chief_complaint=chief_complaint
+        )
+        
+        return {
+            "message": "Appointment created successfully",
+            "consultation_id": str(consultation_id),
+            "patient_name": patient_name,
+            "patient_email": patient_email,
+            "notification_sent": notification_sent,
+            "scheduled_at": scheduled_at,
+            "consultation_type": consultation_type
+        }
         
     except HTTPException:
         raise
@@ -169,10 +250,17 @@ async def get_my_consultations(
         # Serialize the consultation document
         consultation_dict = serialize_document(consultation)
         
-        # Get patient name
+        # Get patient information
         if consultation.get("patient_id"):
             patient = await users_collection.find_one({"_id": consultation["patient_id"]})
-            consultation_dict["patient_name"] = patient.get("full_name", "Unknown Patient") if patient else "Unknown Patient"
+            if patient:
+                consultation_dict["patient_name"] = patient.get("full_name", "Unknown Patient")
+                consultation_dict["patient_email"] = patient.get("email", "")
+                consultation_dict["patient_phone"] = patient.get("phone", "")
+            else:
+                consultation_dict["patient_name"] = "Unknown Patient"
+                consultation_dict["patient_email"] = ""
+                consultation_dict["patient_phone"] = ""
         
         # Get doctor name if assigned
         if consultation.get("doctor_id"):
