@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fix Orphaned Patients</title>
+</head>
+<body>
+    <h1>Fix Orphaned Patients</h1>
+    <button onclick="fixOrphanedPatients()">Fix Orphaned Patients</button>
+    <div id="result"></div>
+
+    <script>
+        async function fixOrphanedPatients() {
+            try {
+                // Get token from localStorage (assuming you're logged in)
+                const token = localStorage.getItem('token');
+                
+                if (!token) {
+                    document.getElementById('result').innerHTML = 'Error: No token found. Please login first.';
+                    return;
+                }
+
+                const response = await fetch('http://localhost:8000/api/v1/patients/fix-orphaned', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('result').innerHTML = 
+                        `<p style="color: green;">Success: ${result.message}</p>
+                         <p>Fixed ${result.fixed_count} orphaned patients</p>`;
+                } else {
+                    document.getElementById('result').innerHTML = 
+                        `<p style="color: red;">Error: ${result.detail}</p>`;
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = 
+                    `<p style="color: red;">Network Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -164,6 +164,7 @@ async def get_patient_by_id(
 ):
     """Get patient by ID (doctors and admins only)"""
     patients_collection = await get_patients_collection()
+    users_collection = await get_users_collection()
     
     try:
         patient = await patients_collection.find_one({"_id": ObjectId(patient_id)})
@@ -179,7 +180,25 @@ async def get_patient_by_id(
             detail="Patient not found"
         )
     
-    return Patient(**patient)
+    # Check if corresponding user account exists and enrich with user data
+    user_data = await users_collection.find_one({"_id": patient["user_id"]})
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient's user account not found"
+        )
+    
+    # Enrich patient data with user information
+    enriched_patient = {**patient}
+    enriched_patient["user_info"] = {
+        "full_name": user_data.get("full_name"),
+        "email": user_data.get("email"),
+        "phone": user_data.get("phone"),
+        "date_of_birth": user_data.get("date_of_birth"),
+        "address": user_data.get("address")
+    }
+    
+    return enriched_patient
 
 @router.post("/", response_model=dict)
 async def create_patient(
@@ -190,6 +209,14 @@ async def create_patient(
     patients_collection = await get_patients_collection()
     
     try:
+        # Check if patient profile already exists for this user
+        existing_patient = await patients_collection.find_one({"user_id": ObjectId(patient_data["user_id"])})
+        if existing_patient:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Patient profile already exists for this user"
+            )
+        
         # Generate medical record number
         import random
         import string
@@ -215,22 +242,27 @@ async def create_patient(
         if patient_data.get("medical_history") and isinstance(patient_data["medical_history"], list):
             medical_history_list = [str(history) for history in patient_data["medical_history"] if history]
         
-        # Create patient document with proper data types
+        # Create patient document with only non-empty fields
         patient_doc = {
             "user_id": ObjectId(patient_data["user_id"]),
             "medical_record_number": str(mrn),
             "gender": str(patient_data.get("gender", "male")),
-            "blood_type": str(patient_data["blood_type"]) if patient_data.get("blood_type") else None,
-            "emergency_contacts": emergency_contacts,
-            "medical_history": medical_history_list,
-            "current_medications": [],
-            "allergies": allergies_list,
-            "lifestyle_data": None,
-            "insurance_info": None,
             "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "vital_signs_history": []
+            "updated_at": datetime.utcnow()
         }
+        
+        # Only add fields that have actual data
+        if patient_data.get("blood_type") and patient_data["blood_type"].strip():
+            patient_doc["blood_type"] = str(patient_data["blood_type"])
+            
+        if emergency_contacts:
+            patient_doc["emergency_contacts"] = emergency_contacts
+            
+        if medical_history_list:
+            patient_doc["medical_history"] = medical_history_list
+            
+        if allergies_list:
+            patient_doc["allergies"] = allergies_list
         
         result = await patients_collection.insert_one(patient_doc)
         
@@ -246,6 +278,48 @@ async def create_patient(
             detail=f"Error creating patient: {str(e)}"
         )
 
+@router.post("/fix-orphaned", response_model=dict)
+async def fix_orphaned_patients(
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.ADMIN]))
+):
+    """Fix orphaned patients by creating missing user accounts (admin only)"""
+    from auth.security import get_password_hash
+    
+    patients_collection = await get_patients_collection()
+    users_collection = await get_users_collection()
+    
+    # Get all patients
+    patients = await patients_collection.find().to_list(length=None)
+    
+    fixed_count = 0
+    for patient in patients:
+        user_data = await users_collection.find_one({"_id": patient["user_id"]})
+        if not user_data:
+            # Create missing user account
+            user_doc = {
+                "_id": patient["user_id"],
+                "email": f"patient_{patient.get('medical_record_number', 'unknown')}@temp.com",
+                "full_name": f"Patient {patient.get('medical_record_number', 'Unknown')}",
+                "role": "patient",
+                "hashed_password": get_password_hash("temppassword123"),
+                "is_active": True,
+                "phone": "+1234567890",
+                "date_of_birth": datetime(1990, 1, 1),
+                "address": "Address not provided",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "last_login": None
+            }
+            
+            await users_collection.insert_one(user_doc)
+            fixed_count += 1
+            print(f"✅ Created user account for patient {patient.get('medical_record_number')}")
+    
+    return {
+        "message": f"Fixed {fixed_count} orphaned patients",
+        "fixed_count": fixed_count
+    }
+
 @router.get("/", response_model=List[Patient])
 async def list_patients(
     skip: int = 0,
@@ -254,8 +328,30 @@ async def list_patients(
 ):
     """List all patients (doctors and admins only)"""
     patients_collection = await get_patients_collection()
+    users_collection = await get_users_collection()
     
+    # Get all patients
     cursor = patients_collection.find().skip(skip).limit(limit)
     patients = await cursor.to_list(length=limit)
     
-    return [Patient(**patient) for patient in patients]
+    # Filter out patients whose user accounts don't exist and enrich with user data
+    valid_patients = []
+    for patient in patients:
+        user_data = await users_collection.find_one({"_id": patient["user_id"]})
+        if user_data:
+            # Enrich patient data with user information
+            enriched_patient = {**patient}
+            enriched_patient["user_info"] = {
+                "full_name": user_data.get("full_name"),
+                "email": user_data.get("email"),
+                "phone": user_data.get("phone"),
+                "date_of_birth": user_data.get("date_of_birth"),
+                "address": user_data.get("address")
+            }
+
+            valid_patients.append(enriched_patient)
+        else:
+            # Optionally log or clean up orphaned patient records
+            print(f"Warning: Patient {patient.get('_id')} has no corresponding user account")
+    
+    return valid_patients

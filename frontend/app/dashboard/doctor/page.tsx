@@ -46,17 +46,46 @@ export default function DoctorDashboard() {
   }, [])
 
   const initializeNotificationSystem = () => {
-    // Try to initialize notification sound, but don't fail if file doesn't exist
+    // Use browser's built-in notification sound or create a simple beep
     try {
-      const audio = new Audio('/notification-sound.mp3')
-      audio.preload = 'auto'
-      audio.onerror = () => {
-        console.log('Notification sound file not found, will use fallback sound')
-        setNotificationSound(null)
+      // Create a simple beep sound using Web Audio API as fallback
+      const createBeepSound = () => {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+        
+        oscillator.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        oscillator.frequency.value = 800
+        oscillator.type = 'sine'
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+        
+        return {
+          play: () => {
+            try {
+              const osc = audioContext.createOscillator()
+              const gain = audioContext.createGain()
+              osc.connect(gain)
+              gain.connect(audioContext.destination)
+              osc.frequency.value = 800
+              osc.type = 'sine'
+              gain.gain.setValueAtTime(0.3, audioContext.currentTime)
+              gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+              osc.start(audioContext.currentTime)
+              osc.stop(audioContext.currentTime + 0.5)
+            } catch (e) {
+              console.log('Could not play notification sound')
+            }
+          }
+        }
       }
-      setNotificationSound(audio)
+      
+      setNotificationSound(createBeepSound())
     } catch (error) {
-      console.log('Could not initialize notification sound:', error)
+      console.log('Could not initialize notification system:', error)
       setNotificationSound(null)
     }
 

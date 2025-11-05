@@ -14,21 +14,26 @@ import {
 
 interface Patient {
   _id: string
-  full_name: string
-  email: string
-  phone?: string
-  date_of_birth: string
+  user_id: string
+  medical_record_number: string
   gender: string
   blood_type?: string
   allergies?: string[]
   medical_history?: string[]
-  emergency_contact?: {
+  emergency_contacts?: {
     name: string
     phone: string
     relationship: string
-  }
+  }[]
   created_at: string
-  last_consultation?: string
+  updated_at: string
+  user_info?: {
+    full_name: string
+    email: string
+    phone?: string
+    date_of_birth?: string
+    address?: string
+  }
 }
 
 export default function PatientManagement() {
@@ -62,150 +67,33 @@ export default function PatientManagement() {
 
   useEffect(() => {
     const filtered = patients.filter(patient =>
-      (patient.full_name && patient.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
+      (patient.user_info?.full_name && patient.user_info.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (patient.user_info?.email && patient.user_info.email.toLowerCase().includes(searchTerm.toLowerCase()))
     )
     setFilteredPatients(filtered)
   }, [searchTerm, patients])
 
   const fetchPatients = async () => {
     try {
-      console.log('Fetching real patient data from MongoDB users collection...')
+      console.log('Fetching enriched patient data...')
       const token = localStorage.getItem('token')
       
-      // Try patients endpoint first
-      let response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/patients/`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/patients/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       
-      console.log('Patients API Response status:', response.status)
-      
-      // If patients endpoint fails, try users endpoint
-      if (!response.ok) {
-        console.log('Patients endpoint failed, trying users endpoint...')
-        response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/users/`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        console.log('Users API Response status:', response.status)
-      }
-      
       if (response.ok) {
-        const data = await response.json()
-        console.log('Raw API response:', data)
-        console.log('Response type:', typeof data)
-        console.log('Is array:', Array.isArray(data))
-        
-        // Handle different response formats from your MongoDB
-        let patients = []
-        if (Array.isArray(data)) {
-          patients = data
-        } else if (data.patients && Array.isArray(data.patients)) {
-          patients = data.patients
-        } else if (data.data && Array.isArray(data.data)) {
-          patients = data.data
-        } else {
-          console.log('Unexpected data structure:', data)
-          const possibleArrays = Object.values(data).filter(val => Array.isArray(val))
-          if (possibleArrays.length > 0) {
-            patients = possibleArrays[0]
-          }
-        }
-        
-        // Filter for patients only if we got users
-        if (patients.length > 0 && patients[0].role) {
-          console.log('Filtering users for patient role...')
-          patients = patients.filter(user => user.role === 'patient' || user.role === 'PATIENT')
-          console.log('Filtered patients:', patients)
-        }
-        
-        console.log('Final patients array:', patients)
-        console.log('Number of patients found:', patients.length)
-        
-        if (patients.length > 0) {
-          console.log('First patient structure:', patients[0])
-          console.log('First patient keys:', Object.keys(patients[0]))
-          
-          // Fetch real user data now that backend endpoint exists
-          console.log('✅ Fetching real patient names from users collection...')
-          
-          let allUsers = []
-          try {
-            const usersResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/users/?role=patient`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            })
-            
-            if (usersResponse.ok) {
-              const usersData = await usersResponse.json()
-              console.log('✅ Real users data received:', usersData)
-              allUsers = Array.isArray(usersData) ? usersData : []
-            } else {
-              console.log('⚠️ Failed to fetch users, status:', usersResponse.status)
-            }
-          } catch (error) {
-            console.error('❌ Error fetching users:', error)
-          }
-          
-          const formattedPatients = patients.map((patient, index) => {
-            const mrn = patient.medical_record_number
-            console.log(`Processing patient: ${mrn} (user_id: ${patient.user_id})`)
-            
-            // Find matching user by user_id
-            const matchingUser = allUsers.find(user => user._id === patient.user_id)
-            
-            let displayName, displayEmail, displayPhone
-            
-            if (matchingUser) {
-              displayName = matchingUser.full_name || `Patient ${mrn?.replace('MRN', '') || index + 1}`
-              displayEmail = matchingUser.email || `patient${index + 1}@hospital.local`
-              displayPhone = matchingUser.phone || 'Phone not provided'
-              console.log(`✅ Real patient data: ${displayName} (${displayEmail})`)
-            } else {
-              // Fallback to medical record number if user not found
-              const patientNumber = mrn ? mrn.replace('MRN', '') : (index + 1).toString().padStart(8, '0')
-              displayName = `Patient ${patientNumber}`
-              displayEmail = `patient.${patientNumber.toLowerCase()}@hospital.local`
-              displayPhone = 'Contact via medical record'
-              console.log(`⚠️ User not found, using fallback: ${displayName}`)
-            }
-            
-            return {
-              _id: patient._id || Math.random().toString(),
-              full_name: displayName,
-              email: displayEmail,
-              phone: displayPhone,
-              date_of_birth: patient.date_of_birth || '1990-01-01',
-              gender: patient.gender || 'Not specified',
-              blood_type: patient.blood_type || 'Not specified',
-              allergies: patient.allergies || [],
-              medical_history: patient.medical_history || [],
-              emergency_contact: patient.emergency_contacts?.[0] || {
-                name: 'Emergency contact not provided',
-                phone: 'Contact hospital administration',
-                relationship: 'Unknown'
-              },
-              created_at: patient.created_at || new Date().toISOString(),
-              // Store original data
-              user_id: patient.user_id,
-              medical_record_number: patient.medical_record_number
-            }
-          })
-          
-          console.log('Final formatted patients with user details:', formattedPatients)
-          setPatients(formattedPatients)
-          setFilteredPatients(formattedPatients)
-        } else {
-          console.warn('No patients found in API response')
-          setPatients([])
-          setFilteredPatients([])
-        }
+        const patients = await response.json()
+        console.log('✅ Enriched patients received:', patients)
+        setPatients(patients)
+        setFilteredPatients(patients)
       } else {
-        const errorText = await response.text()
-        console.error('API response not OK:', response.status, errorText)
+        console.error('Failed to fetch patients:', response.status, response.statusText)
         setPatients([])
         setFilteredPatients([])
       }
     } catch (error) {
-      console.error('Network error fetching patients:', error)
+      console.error('Error fetching patients:', error)
       setPatients([])
       setFilteredPatients([])
     } finally {
@@ -266,13 +154,50 @@ export default function PatientManagement() {
         body: JSON.stringify(userData)
       })
 
+      let userId = null
+      let shouldCreatePatient = true
+      
       if (userResponse.ok) {
         const createdUser = await userResponse.json()
         console.log('User created:', createdUser)
-
-        // Then create the patient profile
+        userId = createdUser.user_id
+      } else {
+        const userError = await userResponse.json()
+        console.error('User creation error:', userError)
+        
+        if (userError.detail === 'Email already registered') {
+          // User exists, we need to find the user ID and create patient profile
+          alert('User account already exists. Attempting to create patient profile...')
+          
+          // Try to login to get user info
+          const loginResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: newPatientForm.email,
+              password: newPatientForm.password
+            })
+          })
+          
+          if (loginResponse.ok) {
+            const loginData = await loginResponse.json()
+            userId = loginData.user.id
+          } else {
+            alert('Error: Cannot verify existing user. Please check the password or use a different email.')
+            shouldCreatePatient = false
+          }
+        } else {
+          alert(`Error creating user account: ${userError.detail || 'Unknown error'}`)
+          shouldCreatePatient = false
+        }
+      }
+      
+      if (shouldCreatePatient && userId) {
+        // Create the patient profile
         const patientData = {
-          user_id: createdUser.user_id,
+          user_id: userId,
           blood_type: newPatientForm.blood_type || null,
           allergies: newPatientForm.allergies ? newPatientForm.allergies.split(',').map(a => a.trim()) : [],
           medical_history: newPatientForm.medical_history ? newPatientForm.medical_history.split(',').map(h => h.trim()) : [],
@@ -316,12 +241,13 @@ export default function PatientManagement() {
         } else {
           const patientError = await patientResponse.json()
           console.error('Patient creation error:', patientError)
-          alert(`Error creating patient profile: ${patientError.detail || 'Unknown error'}`)
+          
+          if (patientResponse.status === 409) {
+            alert('Patient profile already exists for this user! The user account was created but they already have a patient profile.')
+          } else {
+            alert(`Error creating patient profile: ${patientError.detail || 'Unknown error'}`)
+          }
         }
-      } else {
-        const userError = await userResponse.json()
-        console.error('User creation error:', userError)
-        alert(`Error creating user account: ${userError.detail || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Network error:', error)
@@ -395,8 +321,8 @@ export default function PatientManagement() {
             <div key={patient._id} className="health-card hover:shadow-lg transition-shadow">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{patient.full_name}</h3>
-                  <p className="text-sm text-gray-600">Age: {calculateAge(patient.date_of_birth)}</p>
+                  <h3 className="text-lg font-semibold text-gray-900">{patient.user_info?.full_name || 'Unknown'}</h3>
+                  <p className="text-sm text-gray-600">Age: {patient.user_info?.date_of_birth ? calculateAge(patient.user_info.date_of_birth) : 'Unknown'}</p>
                 </div>
                 <span className={`px-2 py-1 text-xs rounded-full ${
                   patient.gender === 'male' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
@@ -408,12 +334,12 @@ export default function PatientManagement() {
               <div className="space-y-2 mb-4">
                 <div className="flex items-center text-sm text-gray-600">
                   <EnvelopeIcon className="h-4 w-4 mr-2" />
-                  {patient.email}
+                  {patient.user_info?.email || 'No email'}
                 </div>
-                {patient.phone && (
+                {patient.user_info?.phone && (
                   <div className="flex items-center text-sm text-gray-600">
                     <PhoneIcon className="h-4 w-4 mr-2" />
-                    {patient.phone}
+                    {patient.user_info.phone}
                   </div>
                 )}
                 {patient.blood_type && (
@@ -489,11 +415,11 @@ export default function PatientManagement() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                      <p className="text-sm text-gray-900">{selectedPatient.full_name}</p>
+                      <p className="text-sm text-gray-900">{selectedPatient.user_info?.full_name || 'Unknown'}</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Age</label>
-                      <p className="text-sm text-gray-900">{calculateAge(selectedPatient.date_of_birth)} years</p>
+                      <p className="text-sm text-gray-900">{selectedPatient.user_info?.date_of_birth ? calculateAge(selectedPatient.user_info.date_of_birth) : 'Unknown'} years</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Gender</label>
@@ -512,11 +438,11 @@ export default function PatientManagement() {
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Email</label>
-                      <p className="text-sm text-gray-900">{selectedPatient.email}</p>
+                      <p className="text-sm text-gray-900">{selectedPatient.user_info?.email || 'Not provided'}</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Phone</label>
-                      <p className="text-sm text-gray-900">{selectedPatient.phone || 'Not provided'}</p>
+                      <p className="text-sm text-gray-900">{selectedPatient.user_info?.phone || 'Not provided'}</p>
                     </div>
                   </div>
                 </div>
@@ -547,16 +473,22 @@ export default function PatientManagement() {
                 )}
 
                 {/* Emergency Contact */}
-                {selectedPatient.emergency_contact && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Emergency Contact</h3>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Emergency Contact</h3>
+                  {selectedPatient.emergency_contacts && selectedPatient.emergency_contacts.length > 0 ? (
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-sm"><strong>Name:</strong> {selectedPatient.emergency_contact.name}</p>
-                      <p className="text-sm"><strong>Phone:</strong> {selectedPatient.emergency_contact.phone}</p>
-                      <p className="text-sm"><strong>Relationship:</strong> {selectedPatient.emergency_contact.relationship}</p>
+                      <p className="text-sm"><strong>Name:</strong> {selectedPatient.emergency_contacts[0].name}</p>
+                      <p className="text-sm"><strong>Phone:</strong> {selectedPatient.emergency_contacts[0].phone}</p>
+                      <p className="text-sm"><strong>Relationship:</strong> {selectedPatient.emergency_contacts[0].relationship}</p>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-sm"><strong>Name:</strong> Emergency contact not provided</p>
+                      <p className="text-sm"><strong>Phone:</strong> Contact hospital administration</p>
+                      <p className="text-sm"><strong>Relationship:</strong> Unknown</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end space-x-3 mt-6 pt-6 border-t">
