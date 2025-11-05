@@ -10,7 +10,7 @@ import uvicorn
 from dotenv import load_dotenv
 import os
 
-from api.routes import auth, patients, doctors, consultations, analytics, users, notifications
+from api.routes import auth, patients, doctors, consultations, analytics, users, notifications, health_records
 from api.routes import ai_assistant as ai, chat_websocket
 from database.connection import connect_to_mongo, close_mongo_connection
 from models.database import init_db
@@ -90,6 +90,7 @@ app.include_router(patients.router, prefix="/api/v1/patients", tags=["patients"]
 app.include_router(doctors.router, prefix="/api/v1/doctors", tags=["doctors"])
 app.include_router(consultations.router, prefix="/api/v1/consultations", tags=["consultations"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(health_records.router, prefix="/api/v1/health-records", tags=["health-records"])
 # AI and Analytics routes
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])

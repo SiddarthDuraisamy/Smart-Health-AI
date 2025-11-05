@@ -19,6 +19,7 @@ import {
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import RealTimeChatAssistant from '../../../components/RealTimeChatAssistant'
 import NotificationBell from '../../../components/NotificationBell'
+import HealthRecordsForm from '../../../components/HealthRecordsForm'
 
 interface HealthMetrics {
   overall_health_score: number
@@ -48,8 +49,11 @@ export default function PatientDashboard() {
   const [consultationHistory, setConsultationHistory] = useState<Appointment[]>([])
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [showChatModal, setShowChatModal] = useState(false)
+  const [showHealthRecordsForm, setShowHealthRecordsForm] = useState(false)
+  const [healthRecordsLoading, setHealthRecordsLoading] = useState(false)
+  const [dynamicHealthScore, setDynamicHealthScore] = useState<number | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
-  const [historyFilter, setHistoryFilter] = useState('all') // 'all', 'recent', 'older'
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'recent' | 'older'>('all')
   const [bookingForm, setBookingForm] = useState({
     consultation_type: 'initial',
     priority: 'medium',
@@ -62,7 +66,7 @@ export default function PatientDashboard() {
     fetchUserData()
     fetchHealthAssessment()
     fetchAppointments()
-    
+    fetchCurrentHealthScore()
     // Auto-refresh appointments every 30 seconds for real-time updates
     const interval = setInterval(() => {
       fetchAppointments()
@@ -70,6 +74,24 @@ export default function PatientDashboard() {
     
     return () => clearInterval(interval)
   }, [])
+
+  const fetchCurrentHealthScore = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/health-records/health-score`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.health_score !== null) {
+          setDynamicHealthScore(data.health_score)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching health score:', error)
+    }
+  }
 
   const fetchUserData = async () => {
     try {
@@ -286,6 +308,40 @@ export default function PatientDashboard() {
     window.location.href = '/auth/login'
   }
 
+  const handleHealthRecordsSubmit = async (healthData: any) => {
+    setHealthRecordsLoading(true)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/health-records/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(healthData)
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setDynamicHealthScore(data.health_score)
+        setShowHealthRecordsForm(false)
+        
+        // Show success message
+        alert(`Health score updated! Your new score is ${data.health_score}/100`)
+        
+        // Refresh health assessment to get updated metrics
+        await fetchHealthAssessment()
+      } else {
+        throw new Error('Failed to submit health records')
+      }
+    } catch (error) {
+      console.error('Error submitting health records:', error)
+      alert('Failed to update health records. Please try again.')
+    } finally {
+      setHealthRecordsLoading(false)
+    }
+  }
+
   const getFilteredHistory = () => {
     if (historyFilter === 'recent') {
       // Last 30 days
@@ -350,26 +406,39 @@ export default function PatientDashboard() {
         </div>
 
         {/* Health Score Card */}
-        {healthMetrics && (
-          <div className="bg-gradient-to-r from-health-primary to-health-secondary rounded-lg p-6 text-white mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold mb-2">Overall Health Score</h2>
-                <div className={`text-4xl font-bold ${getHealthScoreColor(healthMetrics.overall_health_score)}`}>
-                  {healthMetrics.overall_health_score}/100
-                </div>
-                <p className="text-blue-100 mt-2">
-                  {healthMetrics.overall_health_score >= 80 ? 'Excellent health!' : 
-                   healthMetrics.overall_health_score >= 60 ? 'Good health with room for improvement' : 
-                   'Consider consulting with a healthcare provider'}
-                </p>
+        <div className="bg-gradient-to-r from-health-primary to-health-secondary rounded-lg p-6 text-white mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Overall Health Score</h2>
+              <div className={`text-4xl font-bold text-white`}>
+                {dynamicHealthScore !== null ? `${dynamicHealthScore}/100` : 
+                 healthMetrics ? `${healthMetrics.overall_health_score}/100` : '--/100'}
               </div>
-              <div className="text-right">
+              <p className="text-blue-100 mt-2">
+                {dynamicHealthScore !== null ? (
+                  dynamicHealthScore >= 80 ? 'Excellent health!' : 
+                  dynamicHealthScore >= 60 ? 'Good health with room for improvement' : 
+                  'Consider consulting with a healthcare provider'
+                ) : healthMetrics ? (
+                  healthMetrics.overall_health_score >= 80 ? 'Excellent health!' : 
+                  healthMetrics.overall_health_score >= 60 ? 'Good health with room for improvement' : 
+                  'Consider consulting with a healthcare provider'
+                ) : 'Add your health records to get a personalized score'}
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="flex flex-col items-end space-y-2">
                 <ShieldCheckIcon className="h-16 w-16 text-white opacity-80" />
+                <button
+                  onClick={() => setShowHealthRecordsForm(true)}
+                  className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded-full transition-colors"
+                >
+                  {dynamicHealthScore !== null ? 'Update Records' : 'Add Health Data'}
+                </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
@@ -878,6 +947,15 @@ export default function PatientDashboard() {
           onClose={() => setShowChatModal(false)}
           userId={user.id}
           consultationId={undefined} // Can be set if within a consultation context
+        />
+      )}
+
+      {/* Health Records Form */}
+      {showHealthRecordsForm && (
+        <HealthRecordsForm
+          onClose={() => setShowHealthRecordsForm(false)}
+          onSubmit={handleHealthRecordsSubmit}
+          isLoading={healthRecordsLoading}
         />
       )}
     </div>
