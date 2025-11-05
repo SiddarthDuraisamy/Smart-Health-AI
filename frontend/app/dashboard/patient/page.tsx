@@ -13,7 +13,8 @@ import {
   PlusIcon,
   XCircleIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import RealTimeChatAssistant from '../../../components/RealTimeChatAssistant'
@@ -44,9 +45,11 @@ export default function PatientDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [consultationHistory, setConsultationHistory] = useState<Appointment[]>([])
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [showChatModal, setShowChatModal] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const [historyFilter, setHistoryFilter] = useState('all') // 'all', 'recent', 'older'
   const [bookingForm, setBookingForm] = useState({
     consultation_type: 'initial',
     priority: 'medium',
@@ -139,6 +142,13 @@ export default function PatientDashboard() {
         )
         console.log('Upcoming appointments:', upcomingAppointments)
         setAppointments(upcomingAppointments)
+        
+        // Filter for consultation history (completed consultations)
+        const completedConsultations = consultations.filter((apt: Appointment) => 
+          apt.status === 'completed'
+        )
+        console.log('Consultation history:', completedConsultations)
+        setConsultationHistory(completedConsultations)
       } else {
         console.error('Failed to fetch appointments:', response.status, response.statusText)
       }
@@ -276,6 +286,25 @@ export default function PatientDashboard() {
     window.location.href = '/auth/login'
   }
 
+  const getFilteredHistory = () => {
+    if (historyFilter === 'recent') {
+      // Last 30 days
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      return consultationHistory.filter(consultation => 
+        new Date(consultation.scheduled_at) >= thirtyDaysAgo
+      )
+    } else if (historyFilter === 'older') {
+      // Older than 30 days
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      return consultationHistory.filter(consultation => 
+        new Date(consultation.scheduled_at) < thirtyDaysAgo
+      )
+    }
+    return consultationHistory
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -408,6 +437,110 @@ export default function PatientDashboard() {
                 </button>
               </div>
             </div>
+
+            {/* Health Metrics Overview */}
+            <div className="health-card">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Health Metrics</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <HeartIcon className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">Heart Rate</p>
+                  <p className="text-lg font-semibold text-gray-900">72 BPM</p>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <ChartBarIcon className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">Blood Pressure</p>
+                  <p className="text-lg font-semibold text-gray-900">120/80</p>
+                </div>
+                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                  <ClockIcon className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">Sleep</p>
+                  <p className="text-lg font-semibold text-gray-900">7.5 hrs</p>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <UserIcon className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">BMI</p>
+                  <p className="text-lg font-semibold text-gray-900">23.4</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Wellness Tips */}
+            <div className="health-card">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Daily Wellness Tips</h3>
+              <div className="space-y-4">
+                <div className="flex items-start p-4 bg-blue-50 rounded-lg">
+                  <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span className="text-blue-600 font-semibold text-sm">💧</span>
+                  </div>
+                  <div className="ml-3">
+                    <p className="font-medium text-gray-900">Stay Hydrated</p>
+                    <p className="text-sm text-gray-600">Aim for 8-10 glasses of water daily to maintain optimal health and energy levels.</p>
+                  </div>
+                </div>
+                <div className="flex items-start p-4 bg-green-50 rounded-lg">
+                  <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <span className="text-green-600 font-semibold text-sm">🚶</span>
+                  </div>
+                  <div className="ml-3">
+                    <p className="font-medium text-gray-900">Daily Exercise</p>
+                    <p className="text-sm text-gray-600">Take a 30-minute walk or do light exercises to boost your cardiovascular health.</p>
+                  </div>
+                </div>
+                <div className="flex items-start p-4 bg-purple-50 rounded-lg">
+                  <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                    <span className="text-purple-600 font-semibold text-sm">😴</span>
+                  </div>
+                  <div className="ml-3">
+                    <p className="font-medium text-gray-900">Quality Sleep</p>
+                    <p className="text-sm text-gray-600">Maintain a regular sleep schedule with 7-9 hours of quality rest each night.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Emergency Contacts */}
+            <div className="health-card">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Emergency Contacts</h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                      <span className="text-red-600 font-bold">🚨</span>
+                    </div>
+                    <div className="ml-3">
+                      <p className="font-medium text-gray-900">Emergency Services</p>
+                      <p className="text-sm text-gray-600">For life-threatening emergencies</p>
+                    </div>
+                  </div>
+                  <button className="text-red-600 font-semibold">911</button>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-blue-600 font-bold">🏥</span>
+                    </div>
+                    <div className="ml-3">
+                      <p className="font-medium text-gray-900">Primary Care</p>
+                      <p className="text-sm text-gray-600">Your assigned doctor</p>
+                    </div>
+                  </div>
+                  <button className="text-blue-600 font-semibold">Call</button>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                      <span className="text-green-600 font-bold">💊</span>
+                    </div>
+                    <div className="ml-3">
+                      <p className="font-medium text-gray-900">Pharmacy</p>
+                      <p className="text-sm text-gray-600">24/7 medication support</p>
+                    </div>
+                  </div>
+                  <button className="text-green-600 font-semibold">Call</button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Sidebar */}
@@ -499,6 +632,21 @@ export default function PatientDashboard() {
               )}
             </div>
 
+            {/* Consultation History */}
+            <div className="health-card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Consultation History</h3>
+              <div className="text-center py-8">
+                <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600">View your consultation history</p>
+                <button 
+                  onClick={() => window.location.href = '/dashboard/patient/history'}
+                  className="mt-3 health-button-primary text-sm"
+                >
+                  View All History
+                </button>
+              </div>
+            </div>
+
             {/* Recent Activity */}
             <div className="health-card">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
@@ -527,6 +675,84 @@ export default function PatientDashboard() {
                 </p>
               </div>
             </div>
+
+            {/* Quick Health Stats */}
+            <div className="health-card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">Consultations</p>
+                      <p className="text-xs text-gray-600">This month</p>
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold text-green-600">{consultationHistory.length}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <CalendarIcon className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">Appointments</p>
+                      <p className="text-xs text-gray-600">Upcoming</p>
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold text-blue-600">{appointments.length}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                      <HeartIcon className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">Health Score</p>
+                      <p className="text-xs text-gray-600">Current</p>
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold text-purple-600">{healthMetrics?.overall_health_score || 85}/100</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Medication Reminders */}
+            <div className="health-card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Medication Reminders</h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <span className="text-yellow-600 font-bold text-sm">💊</span>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">Vitamin D</p>
+                      <p className="text-xs text-gray-600">Take with breakfast</p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-yellow-600 font-medium">Due</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-l-4 border-green-400">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">Multivitamin</p>
+                      <p className="text-xs text-gray-600">Taken at 8:00 AM</p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-green-600 font-medium">Done</span>
+                </div>
+                <button className="w-full mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 rounded-lg py-2 hover:bg-blue-50">
+                  Manage Medications
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>

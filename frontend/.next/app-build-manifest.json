@@ -41,10 +41,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/doctor/appointments/page.js"
     ],
-    "/not-found": [
+    "/dashboard/patient/history/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/not-found.js"
+      "static/chunks/app/dashboard/patient/history/page.js"
     ]
   }
 }
