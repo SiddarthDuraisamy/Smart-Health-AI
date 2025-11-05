@@ -92,6 +92,13 @@ export default function NotificationBell({ className = "" }: NotificationBellPro
           }
         }
         lastNotificationCount.current = data.unread_count
+      } else if (response.status === 401) {
+        // Token expired or invalid - redirect to login
+        console.log('Authentication failed - redirecting to login')
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.location.href = '/auth/login'
+        return
       }
     } catch (error) {
       console.error('Error fetching notifications:', error)

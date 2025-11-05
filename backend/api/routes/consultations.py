@@ -132,6 +132,10 @@ async def create_consultation(
         patient_name = patient.get("full_name", "Unknown Patient") if patient else "Unknown Patient"
         patient_email = patient.get("email", "") if patient else ""
         
+        # Determine notification type based on who created the consultation
+        is_patient_booking = current_user.role == UserRole.PATIENT
+        is_doctor_booking = current_user.role == UserRole.DOCTOR
+        
         # Send notification to patient
         scheduled_at = consultation_dict.get('scheduled_at', 'TBD')
         consultation_type = consultation_dict.get('consultation_type', 'consultation')
@@ -147,41 +151,90 @@ async def create_consultation(
             chief_complaint=chief_complaint
         )
         
-        # Send real-time notification to patient
+        # Send real-time notifications based on who is booking
         try:
             from api.routes.notifications import notifications_store
-            
-            # Create real-time notification with current UTC timestamp
             current_utc = datetime.utcnow()
-            notification = {
-                "_id": str(ObjectId()),
-                "patient_id": str(consultation_dict["patient_id"]),
-                "title": "New Appointment Scheduled",
-                "message": f"Dr. {current_user.full_name} has scheduled an appointment for you on {scheduled_at}. Reason: {chief_complaint}",
-                "type": "appointment",
-                "from_doctor": current_user.full_name,
-                "from_doctor_id": str(current_user.id),
-                "read": False,
-                "created_at": current_utc,
-                "appointment_id": str(consultation_id),
-                "scheduled_at": scheduled_at,
-                "consultation_type": consultation_type
-            }
             
-            print(f"⏰ Current UTC time: {current_utc}")
+            if is_doctor_booking:
+                # Doctor is booking for patient - notify patient
+                notification = {
+                    "_id": str(ObjectId()),
+                    "patient_id": str(consultation_dict["patient_id"]),
+                    "title": "New Appointment Scheduled",
+                    "message": f"Dr. {current_user.full_name} has scheduled an appointment for you on {scheduled_at}. Reason: {chief_complaint}",
+                    "type": "appointment",
+                    "from_doctor": current_user.full_name,
+                    "from_doctor_id": str(current_user.id),
+                    "read": False,
+                    "created_at": current_utc,
+                    "appointment_id": str(consultation_id),
+                    "scheduled_at": scheduled_at,
+                    "consultation_type": consultation_type
+                }
+                
+                # Store notification for patient
+                patient_id_str = str(consultation_dict["patient_id"])
+                if patient_id_str not in notifications_store:
+                    notifications_store[patient_id_str] = []
+                notifications_store[patient_id_str].append(notification)
+                
+                print(f"🔔 DOCTOR→PATIENT NOTIFICATION: Sent to patient {patient_id_str}")
+                
+            elif is_patient_booking:
+                # Patient is booking - notify all doctors (or specific doctor if assigned)
+                if consultation_dict.get("doctor_id"):
+                    # Notify specific doctor
+                    doctor_id_str = str(consultation_dict["doctor_id"])
+                    notification = {
+                        "_id": str(ObjectId()),
+                        "patient_id": doctor_id_str,  # Using patient_id field for doctor notifications
+                        "title": "New Appointment Request",
+                        "message": f"Patient {patient_name} has requested an appointment on {scheduled_at}. Reason: {chief_complaint}",
+                        "type": "appointment_request",
+                        "from_patient": patient_name,
+                        "from_patient_id": str(consultation_dict["patient_id"]),
+                        "read": False,
+                        "created_at": current_utc,
+                        "appointment_id": str(consultation_id),
+                        "scheduled_at": scheduled_at,
+                        "consultation_type": consultation_type
+                    }
+                    
+                    if doctor_id_str not in notifications_store:
+                        notifications_store[doctor_id_str] = []
+                    notifications_store[doctor_id_str].append(notification)
+                    
+                    print(f"🔔 PATIENT→DOCTOR NOTIFICATION: Sent to doctor {doctor_id_str}")
+                else:
+                    # Notify all doctors about new appointment request
+                    doctors_cursor = users_collection.find({"role": "doctor"})
+                    doctors = await doctors_cursor.to_list(length=None)
+                    
+                    for doctor in doctors:
+                        doctor_id_str = str(doctor["_id"])
+                        notification = {
+                            "_id": str(ObjectId()),
+                            "patient_id": doctor_id_str,  # Using patient_id field for doctor notifications
+                            "title": "New Appointment Request",
+                            "message": f"Patient {patient_name} has requested an appointment on {scheduled_at}. Reason: {chief_complaint}",
+                            "type": "appointment_request",
+                            "from_patient": patient_name,
+                            "from_patient_id": str(consultation_dict["patient_id"]),
+                            "read": False,
+                            "created_at": current_utc,
+                            "appointment_id": str(consultation_id),
+                            "scheduled_at": scheduled_at,
+                            "consultation_type": consultation_type
+                        }
+                        
+                        if doctor_id_str not in notifications_store:
+                            notifications_store[doctor_id_str] = []
+                        notifications_store[doctor_id_str].append(notification)
+                    
+                    print(f"🔔 PATIENT→ALL DOCTORS NOTIFICATION: Sent to {len(doctors)} doctors")
+            
             print(f"⏰ Notification timestamp: {current_utc.isoformat()}")
-            
-            # Store notification
-            patient_id_str = str(consultation_dict["patient_id"])
-            if patient_id_str not in notifications_store:
-                notifications_store[patient_id_str] = []
-            
-            notifications_store[patient_id_str].append(notification)
-            
-            print(f"🔔 REAL-TIME NOTIFICATION: Sent to patient {patient_id_str}")
-            print(f"📅 Notification created at: {notification['created_at']}")
-            print(f"👨‍⚕️ From: {notification['from_doctor']}")
-            print(f"📋 Message: {notification['message']}")
             
         except Exception as e:
             print(f"⚠️ Failed to send real-time notification: {e}")
@@ -235,8 +288,18 @@ async def accept_consultation(
 ):
     """Doctor accepts/claims a pending consultation"""
     consultations_collection = await get_consultations_collection()
+    users_collection = await get_users_collection()
     
     try:
+        # First get the consultation to get patient info
+        consultation = await consultations_collection.find_one({"_id": ObjectId(consultation_id)})
+        if not consultation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Consultation not found"
+            )
+        
+        # Update consultation with doctor assignment
         result = await consultations_collection.update_one(
             {
                 "_id": ObjectId(consultation_id),
@@ -257,8 +320,51 @@ async def accept_consultation(
                 detail="Consultation not found or already assigned"
             )
         
+        # Send notification to patient about doctor acceptance
+        try:
+            from api.routes.notifications import notifications_store
+            
+            # Get patient information
+            patient = await users_collection.find_one({"_id": consultation["patient_id"]})
+            patient_name = patient.get("full_name", "Unknown Patient") if patient else "Unknown Patient"
+            
+            # Create notification for patient
+            current_utc = datetime.utcnow()
+            scheduled_at = consultation.get('scheduled_at', 'TBD')
+            chief_complaint = consultation.get('chief_complaint', 'General consultation')
+            
+            notification = {
+                "_id": str(ObjectId()),
+                "patient_id": str(consultation["patient_id"]),
+                "title": "Appointment Accepted",
+                "message": f"Dr. {current_user.full_name} has accepted your appointment request for {scheduled_at}. Reason: {chief_complaint}",
+                "type": "appointment_accepted",
+                "from_doctor": current_user.full_name,
+                "from_doctor_id": str(current_user.id),
+                "read": False,
+                "created_at": current_utc,
+                "appointment_id": str(consultation_id),
+                "scheduled_at": scheduled_at,
+                "consultation_type": consultation.get('consultation_type', 'consultation')
+            }
+            
+            # Store notification for patient
+            patient_id_str = str(consultation["patient_id"])
+            if patient_id_str not in notifications_store:
+                notifications_store[patient_id_str] = []
+            notifications_store[patient_id_str].append(notification)
+            
+            print(f"🔔 DOCTOR ACCEPTANCE NOTIFICATION: Sent to patient {patient_id_str}")
+            print(f"👨‍⚕️ Dr. {current_user.full_name} accepted appointment for {patient_name}")
+            
+        except Exception as e:
+            print(f"⚠️ Failed to send acceptance notification: {e}")
+            # Don't fail the acceptance if notification fails
+        
         return {"message": "Consultation accepted successfully"}
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

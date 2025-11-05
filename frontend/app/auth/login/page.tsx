@@ -116,6 +116,7 @@ export default function LoginPage() {
                 onChange={handleChange}
                 className="health-input"
                 placeholder="Enter your email"
+                suppressHydrationWarning={true}
               />
             </div>
 
@@ -133,6 +134,7 @@ export default function LoginPage() {
                   onChange={handleChange}
                   className="health-input pr-10"
                   placeholder="Enter your password"
+                  suppressHydrationWarning={true}
                 />
                 <button
                   type="button"
@@ -155,6 +157,7 @@ export default function LoginPage() {
                   name="remember-me"
                   type="checkbox"
                   className="h-4 w-4 text-health-primary focus:ring-health-primary border-gray-300 rounded"
+                  suppressHydrationWarning={true}
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
                   Remember me

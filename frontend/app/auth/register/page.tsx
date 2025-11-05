@@ -144,6 +144,7 @@ export default function RegisterPage() {
                 onChange={handleChange}
                 className="health-input"
                 placeholder="Enter your full name"
+                suppressHydrationWarning={true}
               />
             </div>
 
@@ -161,6 +162,7 @@ export default function RegisterPage() {
                 onChange={handleChange}
                 className="health-input"
                 placeholder="Enter your email"
+                suppressHydrationWarning={true}
               />
             </div>
 
@@ -177,6 +179,7 @@ export default function RegisterPage() {
                 onChange={handleChange}
                 className="health-input"
                 placeholder="Enter your phone number"
+                suppressHydrationWarning={true}
               />
             </div>
 
@@ -192,6 +195,7 @@ export default function RegisterPage() {
                 value={formData.dateOfBirth}
                 onChange={handleChange}
                 className="health-input"
+                suppressHydrationWarning={true}
               />
             </div>
 
@@ -208,6 +212,7 @@ export default function RegisterPage() {
                 onChange={handleChange}
                 className="health-input"
                 placeholder="Enter your address"
+                suppressHydrationWarning={true}
               />
             </div>
 
@@ -226,6 +231,7 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   className="health-input pr-10"
                   placeholder="Create a password"
+                  suppressHydrationWarning={true}
                 />
                 <button
                   type="button"
@@ -256,6 +262,7 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   className="health-input pr-10"
                   placeholder="Confirm your password"
+                  suppressHydrationWarning={true}
                 />
                 <button
                   type="button"
@@ -279,6 +286,7 @@ export default function RegisterPage() {
                 type="checkbox"
                 required
                 className="h-4 w-4 text-health-primary focus:ring-health-primary border-gray-300 rounded"
+                suppressHydrationWarning={true}
               />
               <label htmlFor="terms" className="ml-2 block text-sm text-gray-700">
                 I agree to the{' '}

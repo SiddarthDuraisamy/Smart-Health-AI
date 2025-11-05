@@ -11,6 +11,8 @@ import {
   ClockIcon,
   CheckCircleIcon
 } from '@heroicons/react/24/outline'
+import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
+import NotificationBell from '../../../components/NotificationBell'
 
 interface DashboardStats {
   total_consultations: number
@@ -31,385 +33,13 @@ export default function DoctorDashboard() {
   const [todaysSchedule, setTodaysSchedule] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
-  const [showNotifications, setShowNotifications] = useState(false)
-  const [notifications, setNotifications] = useState<any[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [notificationSound, setNotificationSound] = useState<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     fetchUserData()
     fetchDashboardStats()
     fetchConsultations()
     fetchPendingConsultations()
-    generateMockNotifications()
-    initializeNotificationSystem()
   }, [])
-
-  const initializeNotificationSystem = () => {
-    // Use browser's built-in notification sound or create a simple beep
-    try {
-      // Create a simple beep sound using Web Audio API as fallback
-      const createBeepSound = () => {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        const oscillator = audioContext.createOscillator()
-        const gainNode = audioContext.createGain()
-        
-        oscillator.connect(gainNode)
-        gainNode.connect(audioContext.destination)
-        
-        oscillator.frequency.value = 800
-        oscillator.type = 'sine'
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
-        
-        return {
-          play: () => {
-            try {
-              const osc = audioContext.createOscillator()
-              const gain = audioContext.createGain()
-              osc.connect(gain)
-              gain.connect(audioContext.destination)
-              osc.frequency.value = 800
-              osc.type = 'sine'
-              gain.gain.setValueAtTime(0.3, audioContext.currentTime)
-              gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
-              osc.start(audioContext.currentTime)
-              osc.stop(audioContext.currentTime + 0.5)
-            } catch (e) {
-              console.log('Could not play notification sound')
-            }
-          }
-        }
-      }
-      
-      setNotificationSound(createBeepSound())
-    } catch (error) {
-      console.log('Could not initialize notification system:', error)
-      setNotificationSound(null)
-    }
-
-    // Start real-time notification polling
-    startRealTimeNotifications()
-  }
-
-  const startRealTimeNotifications = () => {
-    // Check immediately on start
-    checkForNewAppointments()
-    
-    // Poll for new appointments every 5 seconds for better real-time experience
-    const interval = setInterval(async () => {
-      await checkForNewAppointments()
-    }, 5000)
-
-    // Cleanup on unmount
-    return () => clearInterval(interval)
-  }
-
-  const checkForNewAppointments = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      
-      // Use the working consultations endpoint from the logs
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/consultations/my-consultations`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (response.ok) {
-        const consultationsData = await response.json()
-        console.log('📊 Consultations API response:', consultationsData)
-        
-        // Handle both array and object responses
-        const consultations = Array.isArray(consultationsData) ? consultationsData : consultationsData.consultations || []
-        console.log('📋 Parsed consultations:', consultations.length, 'items')
-        
-        // Check for consultations created in the last 2 minutes
-        const twoMinutesAgo = new Date(Date.now() - 120000)
-        const recentConsultations = consultations.filter((consultation: any) => {
-          const createdTime = new Date(consultation.created_at)
-          const isRecent = createdTime > twoMinutesAgo && consultation.status === 'SCHEDULED'
-          if (isRecent) {
-            console.log('🔔 Found recent consultation:', consultation)
-          }
-          return isRecent
-        })
-        
-        console.log('⏰ Recent consultations found:', recentConsultations.length)
-        
-        // Add notifications for new consultations
-        recentConsultations.forEach((consultation: any) => {
-          const existingNotification = notifications.find(n => n.appointmentId === consultation._id)
-          if (!existingNotification) {
-            const newNotification = {
-              id: Date.now() + Math.random(),
-              appointmentId: consultation._id,
-              type: 'consultation',
-              title: '🔔 New Consultation Request!',
-              message: `New consultation: "${consultation.chief_complaint || consultation.reason || 'General consultation'}" - ${formatAppointmentTime(consultation.scheduled_at)}`,
-              time: 'Just now',
-              read: false,
-              priority: consultation.priority || 'high',
-              appointmentData: consultation
-            }
-            
-            addNewNotification(newNotification)
-          }
-        })
-      }
-    } catch (error) {
-      console.error('Error checking for new appointments:', error)
-      // Try the pending consultations endpoint as backup
-      await checkPendingConsultationsForNew()
-    }
-  }
-
-  const checkPendingConsultationsForNew = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/consultations/pending`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (response.ok) {
-        const pendingData = await response.json()
-        
-        // Handle different response formats
-        const pendingConsultations = Array.isArray(pendingData) ? pendingData : 
-                                   pendingData.consultations ? pendingData.consultations :
-                                   pendingData.pending_consultations ? pendingData.pending_consultations : []
-        
-        if (Array.isArray(pendingConsultations)) {
-          pendingConsultations.forEach((consultation: any) => {
-            const existingNotification = notifications.find(n => n.appointmentId === consultation._id)
-            if (!existingNotification) {
-              // Check if this is a recent consultation (within last 5 minutes)
-              const createdTime = new Date(consultation.created_at)
-              const fiveMinutesAgo = new Date(Date.now() - 300000)
-              
-              if (createdTime > fiveMinutesAgo) {
-                const newNotification = {
-                  id: Date.now() + Math.random(),
-                  appointmentId: consultation._id,
-                  type: 'consultation',
-                  title: '🔔 New Consultation Request!',
-                  message: `New consultation request: "${consultation.chief_complaint || consultation.reason || 'General consultation'}" - Priority: ${consultation.priority || 'Medium'}`,
-                  time: 'Just now',
-                  read: false,
-                  priority: consultation.priority || 'medium',
-                  appointmentData: consultation
-                }
-                
-                addNewNotification(newNotification)
-              }
-            }
-          })
-        }
-      }
-    } catch (error) {
-      console.error('Error checking pending consultations:', error)
-    }
-  }
-
-  const formatAppointmentTime = (scheduledAt: string) => {
-    try {
-      const date = new Date(scheduledAt)
-      const today = new Date()
-      const tomorrow = new Date(today)
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      
-      const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      
-      if (date.toDateString() === today.toDateString()) {
-        return `today at ${timeString}`
-      } else if (date.toDateString() === tomorrow.toDateString()) {
-        return `tomorrow at ${timeString}`
-      } else {
-        return `${date.toLocaleDateString()} at ${timeString}`
-      }
-    } catch (error) {
-      return scheduledAt
-    }
-  }
-
-  const getRandomPatientName = () => {
-    const names = ['Emma Johnson', 'Michael Smith', 'Sarah Davis', 'David Wilson', 'Lisa Brown', 'James Miller']
-    return names[Math.floor(Math.random() * names.length)]
-  }
-
-  const getRandomTime = () => {
-    const times = ['tomorrow at 10:00 AM', 'today at 3:00 PM', 'Monday at 2:30 PM', 'next week']
-    return times[Math.floor(Math.random() * times.length)]
-  }
-
-  const addNewNotification = (notification: any) => {
-    setNotifications(prev => [notification, ...prev])
-    setUnreadCount(prev => prev + 1)
-    
-    // Play notification sound
-    playNotificationSound()
-    
-    // Show browser notification if permission granted
-    showBrowserNotification(notification)
-  }
-
-  const playNotificationSound = () => {
-    if (notificationSound) {
-      notificationSound.currentTime = 0
-      notificationSound.play().catch(error => {
-        console.log('Could not play notification sound, using fallback:', error)
-        playFallbackSound()
-      })
-    } else {
-      playFallbackSound()
-    }
-  }
-
-  const playFallbackSound = () => {
-    // Create a simple notification beep using Web Audio API
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const oscillator = audioContext.createOscillator()
-      const gainNode = audioContext.createGain()
-      
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContext.destination)
-      
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
-      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1)
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
-      
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + 0.3)
-    } catch (error) {
-      console.log('Could not play fallback sound:', error)
-    }
-  }
-
-  const showBrowserNotification = (notification: any) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(notification.title, {
-        body: notification.message,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico'
-      })
-    } else if ('Notification' in window && Notification.permission !== 'denied') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification(notification.title, {
-            body: notification.message,
-            icon: '/favicon.ico'
-          })
-        }
-      })
-    }
-  }
-
-  // Close notifications dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element
-      if (showNotifications && !target.closest('.notification-dropdown')) {
-        setShowNotifications(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showNotifications])
-
-  const generateMockNotifications = () => {
-    const mockNotifications = [
-      {
-        id: 1,
-        type: 'appointment',
-        title: 'New Appointment Request',
-        message: 'John Doe has requested an appointment for tomorrow at 2:00 PM',
-        time: '5 minutes ago',
-        read: false,
-        priority: 'high',
-      },
-      {
-        id: 2,
-        type: 'consultation',
-        title: 'Consultation Completed',
-        message: 'Sarah Wilson consultation has been completed successfully',
-        time: '15 minutes ago',
-        read: false,
-        priority: 'medium'
-      },
-      {
-        id: 3,
-        type: 'message',
-        title: 'New Message',
-        message: 'You have received a message from patient Mike Johnson',
-        time: '1 hour ago',
-        read: true,
-        priority: 'low'
-      },
-      {
-        id: 4,
-        type: 'alert',
-        title: 'System Alert',
-        message: 'Your next appointment starts in 30 minutes',
-        time: '2 hours ago',
-        read: false,
-        priority: 'high'
-      },
-      {
-        id: 5,
-        type: 'report',
-        title: 'Weekly Report Ready',
-        message: 'Your weekly performance report is now available',
-        time: '1 day ago',
-        read: true,
-        priority: 'low'
-      }
-    ]
-    
-    setNotifications(mockNotifications)
-    setUnreadCount(mockNotifications.filter(n => !n.read).length)
-  }
-
-  const markAsRead = (notificationId: number) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === notificationId 
-          ? { ...notification, read: true }
-          : notification
-      )
-    )
-    setUnreadCount(prev => Math.max(0, prev - 1))
-  }
-
-  const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notification => ({ ...notification, read: true }))
-    )
-    setUnreadCount(0)
-  }
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'appointment':
-        return <CalendarIcon className="h-5 w-5 text-blue-500" />
-      case 'consultation':
-        return <CheckCircleIcon className="h-5 w-5 text-green-500" />
-      case 'message':
-        return <UserIcon className="h-5 w-5 text-purple-500" />
-      case 'alert':
-        return <BellIcon className="h-5 w-5 text-red-500" />
-      case 'report':
-        return <ChartBarIcon className="h-5 w-5 text-orange-500" />
-      default:
-        return <BellIcon className="h-5 w-5 text-gray-500" />
-    }
-  }
 
   const fetchUserData = async () => {
     try {
@@ -459,16 +89,59 @@ export default function DoctorDashboard() {
         const consultationData = Array.isArray(data) ? data : data.consultations || []
         setConsultations(consultationData)
         
-        // Filter today's scheduled consultations
+        // Filter this week's scheduled consultations (more practical than just today)
         const today = new Date()
         const todayStr = today.toISOString().split('T')[0] // YYYY-MM-DD format
         
+        // Get start and end of current week
+        const startOfWeek = new Date(today)
+        startOfWeek.setDate(today.getDate() - today.getDay()) // Sunday
+        const endOfWeek = new Date(startOfWeek)
+        endOfWeek.setDate(startOfWeek.getDate() + 6) // Saturday
+        
+        const startOfWeekStr = startOfWeek.toISOString().split('T')[0]
+        const endOfWeekStr = endOfWeek.toISOString().split('T')[0]
+        
+        console.log('🗓️ Week range for filtering:', startOfWeekStr, 'to', endOfWeekStr)
+        console.log('📊 All consultations:', consultationData.map(c => ({
+          id: c._id,
+          scheduled_at: c.scheduled_at,
+          status: c.status,
+          doctor_id: c.doctor_id,
+          patient_name: c.patient_name
+        })))
+        
         const todaysConsultations = consultationData.filter(consultation => {
-          const scheduledDate = new Date(consultation.scheduled_at).toISOString().split('T')[0]
-          return scheduledDate === todayStr && 
-                 (consultation.status === 'scheduled' || consultation.status === 'in_progress')
+          // Handle different date formats
+          let scheduledDate
+          try {
+            scheduledDate = new Date(consultation.scheduled_at).toISOString().split('T')[0]
+          } catch (error) {
+            console.error('Error parsing date:', consultation.scheduled_at)
+            return false
+          }
+          
+          const isThisWeek = scheduledDate >= startOfWeekStr && scheduledDate <= endOfWeekStr
+          const hasValidStatus = consultation.status === 'scheduled' || consultation.status === 'in_progress'
+          const hasDoctor = consultation.doctor_id
+          
+          console.log('📅 Filtering consultation:', {
+            id: consultation._id,
+            scheduled_at: consultation.scheduled_at,
+            scheduledDate,
+            weekRange: `${startOfWeekStr} to ${endOfWeekStr}`,
+            isThisWeek,
+            status: consultation.status,
+            hasValidStatus,
+            hasDoctor,
+            doctor_id: consultation.doctor_id,
+            patient_name: consultation.patient_name
+          })
+          
+          return isThisWeek && hasValidStatus && hasDoctor
         })
         
+        console.log('📋 Today\'s consultations found:', todaysConsultations.length, todaysConsultations)
         setTodaysSchedule(todaysConsultations)
       } else {
         // Mock data for testing when backend is not available
@@ -573,9 +246,13 @@ export default function DoctorDashboard() {
 
       if (response.ok) {
         alert('Consultation accepted successfully!')
-        // Refresh the pending consultations
-        fetchPendingConsultations()
-        fetchConsultations()
+        // Refresh all data to update today's schedule
+        await fetchPendingConsultations()
+        await fetchConsultations()
+        // Force a small delay to ensure backend is updated
+        setTimeout(() => {
+          fetchConsultations()
+        }, 1000)
       } else {
         const errorData = await response.json()
         alert(`Error accepting consultation: ${errorData.detail}`)
@@ -604,6 +281,15 @@ export default function DoctorDashboard() {
     })
   }
 
+  const handleLogout = () => {
+    // Clear authentication data
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    
+    // Redirect to login page
+    window.location.href = '/auth/login'
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -615,104 +301,22 @@ export default function DoctorDashboard() {
               <span className="ml-2 text-xl font-bold text-gray-900">Smart Health</span>
             </div>
             <div className="flex items-center space-x-4">
-              {/* Notification Bell with Dropdown */}
-              <div className="relative notification-dropdown">
+              <NotificationBell />
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center">
+                  <UserIcon className="h-8 w-8 text-gray-400 bg-gray-100 rounded-full p-1" />
+                  <span className="ml-2 text-sm font-medium text-gray-700">
+                    {user?.full_name || 'Doctor'}
+                  </span>
+                </div>
                 <button
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="relative p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg transition-colors duration-200"
+                  onClick={handleLogout}
+                  className="flex items-center px-3 py-2 text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                  title="Logout"
                 >
-                  <BellIcon className="h-6 w-6" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
+                  <ArrowRightOnRectangleIcon className="h-5 w-5 mr-1" />
+                  Logout
                 </button>
-
-                {/* Notification Dropdown */}
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 overflow-hidden animate-in slide-in-from-top-2 duration-200">
-                    {/* Header */}
-                    <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => checkForNewAppointments()}
-                          className="text-sm text-green-600 hover:text-green-800 font-medium"
-                          title="Check for new notifications"
-                        >
-                          🔄 Refresh
-                        </button>
-                        {unreadCount > 0 && (
-                          <button
-                            onClick={markAllAsRead}
-                            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                          >
-                            Mark all read
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Notifications List */}
-                    <div className="max-h-64 overflow-y-auto">
-                      {notifications.length > 0 ? (
-                        notifications.map((notification) => (
-                          <div
-                            key={notification.id}
-                            className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors duration-200 ${
-                              !notification.read ? 'bg-blue-50' : ''
-                            }`}
-                            onClick={() => markAsRead(notification.id)}
-                          >
-                            <div className="flex items-start space-x-3">
-                              <div className="flex-shrink-0 mt-1">
-                                {getNotificationIcon(notification.type)}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between">
-                                  <p className={`text-sm font-medium ${
-                                    !notification.read ? 'text-gray-900' : 'text-gray-700'
-                                  }`}>
-                                    {notification.title}
-                                  </p>
-                                  {!notification.read && (
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                  )}
-                                </div>
-                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                  {notification.message}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {notification.time}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="px-4 py-8 text-center">
-                          <BellIcon className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                          <p className="text-gray-500">No notifications</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-                      <button className="w-full text-sm text-blue-600 hover:text-blue-800 font-medium">
-                        View all notifications
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center">
-                <UserIcon className="h-8 w-8 text-gray-400 bg-gray-100 rounded-full p-1" />
-                <span className="ml-2 text-sm font-medium text-gray-700">
-                  {user?.full_name || 'Doctor'}
-                </span>
               </div>
             </div>
           </div>
@@ -915,13 +519,31 @@ export default function DoctorDashboard() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Today's Schedule */}
+            {/* This Week's Schedule */}
             <div className="health-card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Today's Schedule</h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">This Week's Schedule</h3>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={fetchConsultations}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    title="Refresh schedule"
+                  >
+                    🔄 Refresh
+                  </button>
+                  <button
+                    onClick={() => console.log('All consultations:', consultations)}
+                    className="text-sm text-green-600 hover:text-green-800 font-medium"
+                    title="Debug: Log all consultations"
+                  >
+                    🐛 Debug
+                  </button>
+                </div>
+              </div>
               {todaysSchedule.length === 0 ? (
                 <div className="text-center py-8">
                   <ClockIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600">No appointments today</p>
+                  <p className="text-gray-600">No appointments this week</p>
                   <button 
                     onClick={handleManageSchedule}
                     className="mt-3 health-button-secondary text-sm"

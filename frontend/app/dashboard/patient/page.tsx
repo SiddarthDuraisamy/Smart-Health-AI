@@ -15,6 +15,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
+import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import RealTimeChatAssistant from '../../../components/RealTimeChatAssistant'
 import NotificationBell from '../../../components/NotificationBell'
 
@@ -266,6 +267,15 @@ export default function PatientDashboard() {
     })
   }
 
+  const handleLogout = () => {
+    // Clear authentication data
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    
+    // Redirect to login page
+    window.location.href = '/auth/login'
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -278,11 +288,21 @@ export default function PatientDashboard() {
             </div>
             <div className="flex items-center space-x-4">
               <NotificationBell />
-              <div className="flex items-center">
-                <UserIcon className="h-8 w-8 text-gray-400 bg-gray-100 rounded-full p-1" />
-                <span className="ml-2 text-sm font-medium text-gray-700">
-                  {user?.full_name || 'Patient'}
-                </span>
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center">
+                  <UserIcon className="h-8 w-8 text-gray-400 bg-gray-100 rounded-full p-1" />
+                  <span className="ml-2 text-sm font-medium text-gray-700">
+                    {user?.full_name || 'Patient'}
+                  </span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center px-3 py-2 text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                  title="Logout"
+                >
+                  <ArrowRightOnRectangleIcon className="h-5 w-5 mr-1" />
+                  Logout
+                </button>
               </div>
             </div>
           </div>
