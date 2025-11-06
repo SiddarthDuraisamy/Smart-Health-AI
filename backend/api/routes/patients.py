@@ -14,6 +14,41 @@ from database.connection import get_patients_collection, get_users_collection
 
 router = APIRouter()
 
+@router.get("/test")
+async def test_endpoint():
+    """Simple test endpoint"""
+    return {"message": "Patients API is working", "status": "ok"}
+
+@router.get("/debug-users")
+async def debug_users(
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.ADMIN]))
+):
+    """Debug endpoint to see what users exist"""
+    try:
+        users_collection = await get_users_collection()
+        
+        # Get all users
+        all_users = await users_collection.find({}).to_list(length=10)
+        
+        result = {
+            "total_users": len(all_users),
+            "users": []
+        }
+        
+        for user in all_users:
+            result["users"].append({
+                "id": str(user.get("_id")),
+                "email": user.get("email"),
+                "full_name": user.get("full_name"),
+                "role": user.get("role"),
+                "phone": user.get("phone"),
+                "address": user.get("address")
+            })
+        
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
 @router.get("/profile", response_model=Patient)
 async def get_patient_profile(current_user: User = Depends(get_current_active_user)):
     """Get patient profile"""
@@ -320,38 +355,89 @@ async def fix_orphaned_patients(
         "fixed_count": fixed_count
     }
 
-@router.get("/", response_model=List[Patient])
+@router.get("/")
 async def list_patients(
     skip: int = 0,
     limit: int = 50,
     current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.ADMIN]))
 ):
     """List all patients (doctors and admins only)"""
-    patients_collection = await get_patients_collection()
-    users_collection = await get_users_collection()
+    try:
+        users_collection = await get_users_collection()
+        patients_collection = await get_patients_collection()
+        
+        # Get all users with role "patient"
+        cursor = users_collection.find({"role": "patient"}).skip(skip).limit(limit)
+        patient_users = await cursor.to_list(length=limit)
+        
+        print(f"🔍 Found {len(patient_users)} users with role 'patient'")
+        for i, user in enumerate(patient_users):
+            print(f"👤 Patient {i+1}: {user.get('full_name')} ({user.get('email')})")
+        
+        all_patients = []
+        
+        for user in patient_users:
+            try:
+                # Try to find corresponding patient record for additional info
+                patient_record = await patients_collection.find_one({"user_id": user["_id"]})
+                
+                # Create patient data from user info
+                patient_data = {
+                    "_id": str(user.get("_id", "")),
+                    "medical_record_number": (
+                        patient_record.get("medical_record_number") if patient_record 
+                        else f"MRN{str(user['_id'])[-6:]}"
+                    ),
+                    "gender": (
+                        patient_record.get("gender") if patient_record 
+                        else "other"
+                    ),
+                    "blood_type": patient_record.get("blood_type") if patient_record else None,
+                    "allergies": patient_record.get("allergies", []) if patient_record else [],
+                    "medical_history": patient_record.get("medical_history", []) if patient_record else [],
+                    "emergency_contacts": patient_record.get("emergency_contacts", []) if patient_record else [],
+                    "created_at": user.get("created_at"),
+                    "updated_at": user.get("updated_at"),
+                    "user_info": {
+                        "full_name": user.get("full_name", "Unknown Patient"),
+                        "email": user.get("email", ""),
+                        "phone": user.get("phone", ""),
+                        "date_of_birth": user.get("date_of_birth"),
+                        "address": user.get("address", "")
+                    }
+                }
+                
+                all_patients.append(patient_data)
+                
+            except Exception as patient_error:
+                print(f"Error processing patient user {user.get('_id')}: {patient_error}")
+                continue
+        
+        print(f"Found {len(all_patients)} patients from users collection")
+        return all_patients
     
-    # Get all patients
-    cursor = patients_collection.find().skip(skip).limit(limit)
-    patients = await cursor.to_list(length=limit)
-    
-    # Filter out patients whose user accounts don't exist and enrich with user data
-    valid_patients = []
-    for patient in patients:
-        user_data = await users_collection.find_one({"_id": patient["user_id"]})
-        if user_data:
-            # Enrich patient data with user information
-            enriched_patient = {**patient}
-            enriched_patient["user_info"] = {
-                "full_name": user_data.get("full_name"),
-                "email": user_data.get("email"),
-                "phone": user_data.get("phone"),
-                "date_of_birth": user_data.get("date_of_birth"),
-                "address": user_data.get("address")
-            }
+    except Exception as e:
+        print(f"Error in list_patients: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
-            valid_patients.append(enriched_patient)
-        else:
-            # Optionally log or clean up orphaned patient records
-            print(f"Warning: Patient {patient.get('_id')} has no corresponding user account")
+@router.get("/fields")
+async def show_patient_fields(
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.ADMIN]))
+):
+    """Show what fields exist in patient documents"""
+    patients_collection = await get_patients_collection()
     
-    return valid_patients
+    # Get first patient to see structure
+    sample_patient = await patients_collection.find_one({})
+    
+    if sample_patient:
+        return {
+            "sample_patient_fields": list(sample_patient.keys()),
+            "sample_data": {k: str(v)[:100] + "..." if len(str(v)) > 100 else v 
+                          for k, v in sample_patient.items() if k != "_id"}
+        }
+    else:
+        return {"message": "No patients found in database"}
+
