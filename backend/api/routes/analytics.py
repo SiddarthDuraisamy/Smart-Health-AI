@@ -13,7 +13,7 @@ from models.user import User, UserRole
 from auth.security import get_current_active_user, require_roles
 from database.connection import (
     get_patients_collection, get_consultations_collection, 
-    get_doctors_collection, get_ai_predictions_collection
+    get_doctors_collection, get_users_collection, get_ai_predictions_collection
 )
 
 router = APIRouter()
@@ -27,10 +27,15 @@ async def get_analytics_dashboard(
     consultations_collection = await get_consultations_collection()
     doctors_collection = await get_doctors_collection()
     
-    # Basic counts
-    total_patients = await patients_collection.count_documents({})
-    total_doctors = await doctors_collection.count_documents({})
+    # Basic counts - count users by role for consistency
+    users_collection = await get_users_collection()
+    total_patients = await users_collection.count_documents({"role": "patient"})
+    total_doctors = await users_collection.count_documents({"role": "doctor"})
     total_consultations = await consultations_collection.count_documents({})
+    
+    # Debug logging for patient count consistency
+    patient_profiles_count = await patients_collection.count_documents({})
+    print(f"📊 Analytics Dashboard - Users with patient role: {total_patients}, Patient profiles: {patient_profiles_count}")
     
     # Recent activity (last 30 days)
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)

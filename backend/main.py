@@ -13,7 +13,7 @@ import os
 # Load environment variables FIRST
 load_dotenv()
 
-from api.routes import auth, patients, doctors, consultations, analytics, users, notifications, health_records, medications
+from api.routes import auth, patients, doctors, consultations, analytics, users, notifications, health_records, medications, blockchain
 from api.routes import ai_assistant as ai, chat_websocket
 from database.connection import connect_to_mongo, close_mongo_connection
 from models.database import init_db
@@ -35,6 +35,11 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(connect_to_mongo(), timeout=10.0)
             await asyncio.wait_for(init_db(), timeout=5.0)
             print("✅ Database connected successfully")
+            
+            # Initialize blockchain
+            from blockchain.ledger import health_blockchain
+            await health_blockchain.initialize_blockchain()
+            print("🔗 Blockchain initialized successfully")
         except asyncio.TimeoutError:
             print("⚠️ Database connection timeout - starting without database")
             print("📝 API will run with limited functionality")
@@ -95,6 +100,8 @@ app.include_router(medications.router, prefix="/api/v1/medications", tags=["medi
 # AI and Analytics routes
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
+# Blockchain audit routes
+app.include_router(blockchain.router, prefix="/api/v1/blockchain", tags=["Blockchain Audit"])
 # WebSocket chat
 app.include_router(chat_websocket.router, prefix="/api/v1/ws", tags=["WebSocket Chat"])
 

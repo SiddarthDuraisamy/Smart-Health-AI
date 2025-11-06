@@ -9,10 +9,12 @@ import {
   UserIcon,
   BellIcon,
   ClockIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import NotificationBell from '../../../components/NotificationBell'
+import BlockchainAuditViewer from '../../../components/BlockchainAuditViewer'
 
 interface DashboardStats {
   total_consultations: number
@@ -33,6 +35,7 @@ export default function DoctorDashboard() {
   const [todaysSchedule, setTodaysSchedule] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
+  const [showBlockchainAudit, setShowBlockchainAudit] = useState(false)
 
   useEffect(() => {
     fetchUserData()
@@ -301,6 +304,14 @@ export default function DoctorDashboard() {
               <span className="ml-2 text-xl font-bold text-gray-900">Smart Health</span>
             </div>
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setShowBlockchainAudit(true)}
+                className="flex items-center px-3 py-2 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                title="View Blockchain Audit Trail"
+              >
+                <ShieldCheckIcon className="h-5 w-5 mr-1" />
+                Audit Trail
+              </button>
               <NotificationBell />
               <div className="flex items-center space-x-3">
                 <div className="flex items-center">
@@ -531,13 +542,6 @@ export default function DoctorDashboard() {
                   >
                     🔄 Refresh
                   </button>
-                  <button
-                    onClick={() => console.log('All consultations:', consultations)}
-                    className="text-sm text-green-600 hover:text-green-800 font-medium"
-                    title="Debug: Log all consultations"
-                  >
-                    🐛 Debug
-                  </button>
                 </div>
               </div>
               {todaysSchedule.length === 0 ? (
@@ -639,6 +643,12 @@ export default function DoctorDashboard() {
           </div>
         </div>
       </div>
+      
+      {/* Blockchain Audit Viewer */}
+      <BlockchainAuditViewer
+        isOpen={showBlockchainAudit}
+        onClose={() => setShowBlockchainAudit(false)}
+      />
     </div>
   )
 }

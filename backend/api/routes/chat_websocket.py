@@ -14,6 +14,7 @@ from models.consultation import ChatMessage
 from auth.security import get_current_user_from_token
 from database.connection import get_consultations_collection, get_patients_collection
 from ml.llm_engine import healthcare_llm
+from blockchain.ledger import health_auditor
 
 router = APIRouter()
 
@@ -266,6 +267,19 @@ async def handle_chat_message(message_data: dict, current_user: User, websocket:
                 "type": "ai_message"
             }
             manager.add_to_conversation_memory(str(current_user.id), ai_msg_memory)
+            
+            # Log AI interaction to blockchain
+            try:
+                await health_auditor.log_ai_interaction(
+                    patient_id=str(current_user.id),
+                    interaction_type="health_chat",
+                    ai_model="gemini-2.5-flash",
+                    input_data=user_message,
+                    output_data=ai_response_text,
+                    confidence_score=0.9  # Default confidence score
+                )
+            except Exception as e:
+                print(f"⚠️ Blockchain AI logging failed: {e}")
             
             # Note: The streaming method sends messages directly to websocket
             # No need to send additional response here as it's handled in the streaming method

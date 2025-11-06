@@ -11,6 +11,7 @@ from models.user import User, UserRole
 from models.patient import Patient, PatientCreate, PatientUpdate, VitalSigns, LifestyleData, PatientInDB, EmergencyContact
 from auth.security import get_current_active_user, require_roles
 from database.connection import get_patients_collection, get_users_collection
+from blockchain.ledger import health_auditor
 
 router = APIRouter()
 
@@ -67,6 +68,18 @@ async def get_patient_profile(current_user: User = Depends(get_current_active_us
             detail="Patient profile not found"
         )
     
+    # Log data access to blockchain
+    try:
+        await health_auditor.log_data_access(
+            patient_id=str(current_user.id),
+            accessed_by=str(current_user.id),
+            access_type="read",
+            data_type="patient_profile",
+            additional_info={"endpoint": "/profile", "self_access": True}
+        )
+    except Exception as e:
+        print(f"⚠️ Blockchain logging failed: {e}")
+    
     return Patient(**patient)
 
 @router.put("/profile", response_model=Patient)
@@ -83,6 +96,9 @@ async def update_patient_profile(
     
     patients_collection = await get_patients_collection()
     
+    # Get current data for blockchain logging
+    current_patient = await patients_collection.find_one({"user_id": ObjectId(current_user.id)})
+    
     # Prepare update data
     update_data = {k: v for k, v in patient_update.dict().items() if v is not None}
     if update_data:
@@ -98,6 +114,22 @@ async def update_patient_profile(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Patient profile not found"
             )
+        
+        # Log data modification to blockchain
+        try:
+            for field, new_value in update_data.items():
+                if field != "updated_at":
+                    old_value = current_patient.get(field) if current_patient else None
+                    await health_auditor.log_data_modification(
+                        patient_id=str(current_user.id),
+                        modified_by=str(current_user.id),
+                        modification_type="update",
+                        field_changed=field,
+                        old_value=old_value,
+                        new_value=new_value
+                    )
+        except Exception as e:
+            print(f"⚠️ Blockchain logging failed: {e}")
     
     # Return updated patient
     updated_patient = await patients_collection.find_one({"user_id": ObjectId(current_user.id)})
@@ -232,6 +264,22 @@ async def get_patient_by_id(
         "date_of_birth": user_data.get("date_of_birth"),
         "address": user_data.get("address")
     }
+    
+    # Log doctor access to patient data
+    try:
+        await health_auditor.log_data_access(
+            patient_id=patient_id,
+            accessed_by=str(current_user.id),
+            access_type="read",
+            data_type="patient_profile",
+            additional_info={
+                "endpoint": f"/patients/{patient_id}",
+                "doctor_access": True,
+                "doctor_name": current_user.full_name
+            }
+        )
+    except Exception as e:
+        print(f"⚠️ Blockchain logging failed: {e}")
     
     return enriched_patient
 
@@ -440,4 +488,43 @@ async def show_patient_fields(
         }
     else:
         return {"message": "No patients found in database"}
+
+@router.get("/count-consistency")
+async def check_count_consistency(
+    current_user: User = Depends(require_roles([UserRole.DOCTOR, UserRole.ADMIN]))
+):
+    """Check consistency between user accounts and patient profiles"""
+    try:
+        users_collection = await get_users_collection()
+        patients_collection = await get_patients_collection()
+        
+        # Count users with patient role
+        patient_users_count = await users_collection.count_documents({"role": "patient"})
+        
+        # Count patient profiles
+        patient_profiles_count = await patients_collection.count_documents({})
+        
+        # Find users with patient role but no profile
+        patient_users = await users_collection.find({"role": "patient"}).to_list(length=None)
+        missing_profiles = []
+        
+        for user in patient_users:
+            profile = await patients_collection.find_one({"user_id": user["_id"]})
+            if not profile:
+                missing_profiles.append({
+                    "user_id": str(user["_id"]),
+                    "full_name": user.get("full_name"),
+                    "email": user.get("email")
+                })
+        
+        return {
+            "patient_users_count": patient_users_count,
+            "patient_profiles_count": patient_profiles_count,
+            "consistency": patient_users_count == patient_profiles_count,
+            "missing_profiles": missing_profiles,
+            "missing_count": len(missing_profiles)
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
 

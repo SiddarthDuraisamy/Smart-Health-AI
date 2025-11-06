@@ -10,10 +10,11 @@ from datetime import datetime
 from models.user import User, UserRole
 from models.consultation import (
     Consultation, ConsultationCreate, ConsultationUpdate, 
-    ChatMessage, Diagnosis, Treatment, AIInsight
+    ChatMessage, Diagnosis, Treatment, AIInsight, ConsultationType, ConsultationStatus, Priority
 )
 from auth.security import get_current_active_user, require_roles
-from database.connection import get_consultations_collection, get_users_collection, get_patients_collection
+from database.connection import get_consultations_collection, get_users_collection, get_patients_collection, get_doctors_collection
+from blockchain.ledger import health_auditor
 # Simple notification function to avoid import issues
 async def send_patient_notification(patient_email: str, patient_name: str, doctor_name: str, appointment_datetime: str, appointment_type: str, chief_complaint: str) -> bool:
     """Send appointment notification to patient (console logging)"""
@@ -126,6 +127,24 @@ async def create_consultation(
         
         result = await consultations_collection.insert_one(consultation_dict)
         consultation_id = result.inserted_id
+        
+        # Log consultation creation to blockchain
+        try:
+            await health_auditor.log_consultation_event(
+                consultation_id=str(consultation_id),
+                patient_id=str(consultation_dict["patient_id"]),
+                doctor_id=str(consultation_dict.get("doctor_id", "")),
+                event_type="created",
+                details={
+                    "consultation_type": consultation_dict.get("consultation_type"),
+                    "chief_complaint": consultation_dict.get("chief_complaint"),
+                    "scheduled_at": consultation_dict.get("scheduled_at").isoformat() if consultation_dict.get("scheduled_at") else None,
+                    "created_by": str(current_user.id),
+                    "created_by_role": current_user.role.value
+                }
+            )
+        except Exception as e:
+            print(f"⚠️ Blockchain logging failed: {e}")
         
         # Get patient information for notification
         patient = await users_collection.find_one({"_id": consultation_dict["patient_id"]})
