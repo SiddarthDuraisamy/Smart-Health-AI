@@ -9,8 +9,28 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
 
+// Enhanced markdown-to-HTML converter for healthcare responses
+const parseMarkdown = (text: string): string => {
+  return text
+    // Bold text
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+    // Headers
+    .replace(/^### (.*$)/gm, '<h3 class="font-semibold text-gray-900 mt-4 mb-2 text-base">$1</h3>')
+    .replace(/^## (.*$)/gm, '<h2 class="font-bold text-gray-900 mt-4 mb-2 text-lg">$1</h2>')
+    .replace(/^# (.*$)/gm, '<h1 class="font-bold text-gray-900 mt-4 mb-3 text-xl">$1</h1>')
+    // Numbered lists with better styling
+    .replace(/^\d+\.\s+(.*)$/gm, '<div class="flex mb-2"><span class="font-medium text-blue-600 mr-2">•</span><span>$1</span></div>')
+    // Bullet points with better styling
+    .replace(/^\*\s+(.*)$/gm, '<div class="flex mb-2 ml-4"><span class="text-blue-600 mr-2">•</span><span>$1</span></div>')
+    // Sub-bullet points (indented)
+    .replace(/^\s+\*\s+(.*)$/gm, '<div class="flex mb-1 ml-8"><span class="text-gray-500 mr-2">◦</span><span class="text-gray-700">$1</span></div>')
+    // Line breaks and paragraphs
+    .replace(/\n\n/g, '</div><div class="mb-3">')
+    .replace(/\n/g, '<br/>')
+}
+
 interface ChatMessage {
-  type: 'user_message' | 'ai_message' | 'system' | 'typing' | 'error'
+  type: 'user_message' | 'ai_message' | 'ai_stream' | 'system' | 'typing' | 'error'
   message: string
   timestamp: string
   user_id?: string
@@ -20,6 +40,7 @@ interface ChatMessage {
   confidence?: number
   suggestions?: string[]
   error?: boolean
+  is_complete?: boolean
 }
 
 interface RealTimeChatAssistantProps {
@@ -40,6 +61,7 @@ export default function RealTimeChatAssistant({
   const [isConnected, setIsConnected] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected')
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   
   const websocketRef = useRef<WebSocket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -122,6 +144,38 @@ export default function RealTimeChatAssistant({
           typingTimeoutRef.current = setTimeout(() => {
             setIsTyping(false)
           }, 3000)
+        } else if (data.type === 'ai_stream') {
+          // Handle streaming message
+          setIsTyping(false)
+          const messageId = data.timestamp || Date.now().toString()
+          
+          setMessages(prev => {
+            const existingIndex = prev.findIndex(msg => 
+              msg.type === 'ai_stream' && msg.timestamp === messageId
+            )
+            
+            if (existingIndex >= 0) {
+              // Update existing streaming message
+              const updated = [...prev]
+              updated[existingIndex] = { ...data, timestamp: messageId }
+              return updated
+            } else {
+              // Add new streaming message
+              return [...prev, { ...data, timestamp: messageId }]
+            }
+          })
+          
+          setStreamingMessageId(messageId)
+        } else if (data.type === 'ai_message' && data.is_complete) {
+          // Replace streaming message with final message
+          setIsTyping(false)
+          setStreamingMessageId(null)
+          
+          setMessages(prev => {
+            // Remove any streaming messages and add the final one
+            const filtered = prev.filter(msg => msg.type !== 'ai_stream')
+            return [...filtered, data]
+          })
         } else {
           setIsTyping(false)
           setMessages(prev => [...prev, data])
@@ -132,16 +186,40 @@ export default function RealTimeChatAssistant({
     }
 
     ws.onclose = (event) => {
-      console.log('❌ WebSocket disconnected:', event.code, event.reason)
+      console.log('🔌 WebSocket disconnected:', event.code, event.reason)
       setIsConnected(false)
-      setConnectionStatus('disconnected')
+      setIsTyping(false)
+      setStreamingMessageId(null)
       
-      // Attempt to reconnect after 3 seconds if not intentionally closed
-      if (event.code !== 1000 && isOpen) {
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('🔄 Attempting to reconnect...')
-          connectWebSocket()
-        }, 3000)
+      // Handle different disconnect reasons
+      if (event.code === 1000) {
+        console.log('✅ Normal closure - user closed chat')
+        setConnectionStatus('disconnected')
+      } else if (event.code === 1001) {
+        console.log('🚪 Going away - page refresh or navigation')
+        setConnectionStatus('disconnected')
+      } else if (event.code === 1006) {
+        console.log('⚠️ Abnormal closure - connection lost')
+        setConnectionStatus('error')
+        
+        // Attempt to reconnect for abnormal closures
+        if (isOpen) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('🔄 Attempting to reconnect after abnormal closure...')
+            connectWebSocket()
+          }, 2000)
+        }
+      } else {
+        console.log('⚠️ Unexpected closure:', event.code)
+        setConnectionStatus('error')
+        
+        // Attempt to reconnect for unexpected closures
+        if (isOpen && event.code !== 1000) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('🔄 Attempting to reconnect...')
+            connectWebSocket()
+          }, 3000)
+        }
       }
     }
 
@@ -220,7 +298,7 @@ export default function RealTimeChatAssistant({
   const getConnectionStatusColor = () => {
     switch (connectionStatus) {
       case 'connected': return 'text-green-500'
-      case 'connecting': return 'text-yellow-500'
+      case 'connecting': return 'text-yellow-500 animate-pulse'
       case 'error': return 'text-red-500'
       default: return 'text-gray-500'
     }
@@ -228,10 +306,19 @@ export default function RealTimeChatAssistant({
 
   const getConnectionStatusText = () => {
     switch (connectionStatus) {
-      case 'connected': return 'Connected'
-      case 'connecting': return 'Connecting...'
-      case 'error': return 'Connection Error'
-      default: return 'Disconnected'
+      case 'connected': return '🟢 Connected'
+      case 'connecting': return '🟡 Connecting...'
+      case 'error': return '🔴 Connection Error'
+      default: return '⚪ Disconnected'
+    }
+  }
+
+  const getConnectionStatusIcon = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'bg-green-500'
+      case 'connecting': return 'bg-yellow-500 animate-pulse'
+      case 'error': return 'bg-red-500'
+      default: return 'bg-gray-400'
     }
   }
 
@@ -245,9 +332,7 @@ export default function RealTimeChatAssistant({
           <div className="flex items-center space-x-3">
             <div className="relative">
               <SparklesIcon className="h-8 w-8 text-blue-600" />
-              <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${
-                isConnected ? 'bg-green-500' : 'bg-gray-400'
-              }`}></div>
+              <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${getConnectionStatusIcon()}`}></div>
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">AI Health Assistant</h2>
@@ -256,12 +341,22 @@ export default function RealTimeChatAssistant({
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
-          >
-            <XMarkIcon className="h-6 w-6" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {(connectionStatus === 'error' || connectionStatus === 'disconnected') && (
+              <button
+                onClick={connectWebSocket}
+                className="px-3 py-1 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 transition-colors duration-200"
+              >
+                Reconnect
+              </button>
+            )}
+            <button 
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
+            >
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -271,23 +366,44 @@ export default function RealTimeChatAssistant({
               message.type === 'user_message' ? 'justify-end' : 'justify-start'
             }`}>
               <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
-                message.type === 'user_message' 
+                  message.type === 'user_message' 
                   ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white' 
                   : message.type === 'system'
                   ? 'bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 border'
                   : message.type === 'error'
                   ? 'bg-gradient-to-r from-red-50 to-red-100 text-red-700 border border-red-200'
+                  : message.type === 'ai_stream'
+                  ? 'bg-white text-gray-900 border border-gray-200 border-l-4 border-l-blue-500'
                   : 'bg-white text-gray-900 border border-gray-200'
               }`}>
                 <div className="flex items-start space-x-2">
-                  {message.type === 'ai_message' && (
+                  {(message.type === 'ai_message' || message.type === 'ai_stream') && (
                     <SparklesIcon className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                   )}
                   {message.type === 'error' && (
                     <ExclamationTriangleIcon className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
                   )}
                   <div className="flex-1">
-                    <p className="text-sm leading-relaxed">{message.message}</p>
+                    {(message.type === 'ai_message' || message.type === 'ai_stream') ? (
+                      <div 
+                        className="text-sm leading-relaxed max-w-none"
+                        dangerouslySetInnerHTML={{ 
+                          __html: `<div class="mb-3">${parseMarkdown(message.message)}</div>` 
+                        }}
+                      />
+                    ) : (
+                      <p className="text-sm leading-relaxed">{message.message}</p>
+                    )}
+                    {message.type === 'ai_stream' && (
+                      <div className="flex items-center mt-2">
+                        <div className="flex space-x-1">
+                          <div className="w-1 h-1 bg-blue-600 rounded-full animate-pulse"></div>
+                          <div className="w-1 h-1 bg-blue-600 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                          <div className="w-1 h-1 bg-blue-600 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                        </div>
+                        <span className="text-xs text-blue-600 ml-2">Streaming...</span>
+                      </div>
+                    )}
                     {message.suggestions && message.suggestions.length > 0 && (
                       <div className="mt-2 space-y-1">
                         <p className="text-xs opacity-75">Suggestions:</p>

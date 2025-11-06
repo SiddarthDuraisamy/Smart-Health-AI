@@ -21,6 +21,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
         self.user_connections: Dict[str, str] = {}  # user_id -> connection_id
+        self.conversation_memory: Dict[str, List[Dict[str, Any]]] = {}  # user_id -> conversation history
 
     async def connect(self, websocket: WebSocket, user_id: str, connection_id: str):
         await websocket.accept()
@@ -33,7 +34,8 @@ class ConnectionManager:
             del self.active_connections[connection_id]
         if user_id and user_id in self.user_connections:
             del self.user_connections[user_id]
-        print(f"❌ Connection {connection_id} disconnected")
+        print(f"🔌 Connection {connection_id} disconnected for user {user_id}")
+        print(f"📊 Active connections: {len(self.active_connections)}, Users: {len(self.user_connections)}")
 
     async def send_personal_message(self, message: dict, user_id: str):
         connection_id = self.user_connections.get(user_id)
@@ -54,6 +56,30 @@ class ConnectionManager:
         for user_id, connection_id in self.user_connections.items():
             if user_id != exclude_user:
                 await self.send_personal_message(message, user_id)
+
+    def add_to_conversation_memory(self, user_id: str, message: Dict[str, Any]):
+        """Add a message to user's conversation memory"""
+        if user_id not in self.conversation_memory:
+            self.conversation_memory[user_id] = []
+        
+        # Keep only last 50 messages to prevent memory bloat
+        if len(self.conversation_memory[user_id]) >= 50:
+            self.conversation_memory[user_id] = self.conversation_memory[user_id][-40:]  # Keep last 40
+        
+        self.conversation_memory[user_id].append(message)
+        print(f"💾 Added message to conversation memory for user {user_id}. Total messages: {len(self.conversation_memory[user_id])}")
+
+    def get_conversation_memory(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get user's conversation history"""
+        history = self.conversation_memory.get(user_id, [])
+        print(f"🧠 Retrieved {len(history)} messages from conversation memory for user {user_id}")
+        return history
+
+    def clear_conversation_memory(self, user_id: str):
+        """Clear user's conversation memory"""
+        if user_id in self.conversation_memory:
+            del self.conversation_memory[user_id]
+            print(f"🗑️ Cleared conversation memory for user {user_id}")
 
 manager = ConnectionManager()
 
@@ -116,7 +142,8 @@ async def websocket_chat_endpoint(websocket: WebSocket, user_id: str):
                 
                 await handle_chat_message(message_data, current_user, websocket)
                 
-            except WebSocketDisconnect:
+            except WebSocketDisconnect as e:
+                print(f"🔌 WebSocket disconnect for user {user_id}: code={e.code}, reason={e.reason}")
                 break
             except json.JSONDecodeError:
                 error_msg = {
@@ -145,6 +172,19 @@ async def handle_chat_message(message_data: dict, current_user: User, websocket:
     user_message = message_data.get("message", "")
     consultation_id = message_data.get("consultation_id")
     language = message_data.get("language", "en")
+    
+    # Handle special commands
+    if user_message.lower().strip() in ['/clear', '/reset', '/new']:
+        # Clear conversation memory
+        manager.clear_conversation_memory(str(current_user.id))
+        clear_msg = {
+            "type": "system",
+            "message": "🔄 Conversation memory cleared. Starting fresh!",
+            "timestamp": datetime.utcnow().isoformat(),
+            "sender": "system"
+        }
+        await websocket.send_text(json.dumps(clear_msg))
+        return
     
     if message_type == "chat" and user_message:
         # Echo user message back with confirmation
@@ -179,40 +219,60 @@ async def handle_chat_message(message_data: dict, current_user: User, websocket:
                     'full_name': current_user.full_name
                 })
         
-        # Get conversation history if consultation_id is provided
+        # Get conversation history - prioritize consultation history, fallback to memory
         conversation_history = []
         if consultation_id:
+            # Get from consultation database
             consultations_collection = await get_consultations_collection()
             try:
                 consultation = await consultations_collection.find_one({"_id": ObjectId(consultation_id)})
                 if consultation:
                     conversation_history = consultation.get("chat_messages", [])
+                    print(f"📋 Using consultation history: {len(conversation_history)} messages")
             except Exception:
                 pass
         
+        # If no consultation history, use in-memory conversation history
+        if not conversation_history:
+            conversation_history = manager.get_conversation_memory(str(current_user.id))
+            print(f"🧠 Using memory history: {len(conversation_history)} messages")
+        
         try:
-            # Generate AI response
-            ai_response = await healthcare_llm.chat_with_patient(
+            # Add user message to conversation memory
+            user_msg_memory = {
+                "sender": str(current_user.id),
+                "message": user_message,
+                "timestamp": datetime.utcnow().isoformat(),
+                "language": language,
+                "type": "user_message"
+            }
+            manager.add_to_conversation_memory(str(current_user.id), user_msg_memory)
+            
+            # Generate streaming AI response
+            ai_response_text = await healthcare_llm.chat_with_patient_stream(
                 message=user_message,
                 patient_context=patient_context,
                 conversation_history=conversation_history,
-                language=language
+                language=language,
+                websocket=websocket
             )
             
-            # Send AI response
-            ai_msg_response = {
-                "type": "ai_message",
-                "message": ai_response.get("response", "I'm sorry, I couldn't process your request right now."),
-                "timestamp": datetime.utcnow().isoformat(),
+            # Add AI response to conversation memory
+            ai_msg_memory = {
                 "sender": "ai",
-                "confidence": ai_response.get("confidence", 0.8),
-                "suggestions": ai_response.get("suggestions", [])
+                "message": ai_response_text,
+                "timestamp": datetime.utcnow().isoformat(),
+                "language": language,
+                "type": "ai_message"
             }
-            await websocket.send_text(json.dumps(ai_msg_response))
+            manager.add_to_conversation_memory(str(current_user.id), ai_msg_memory)
+            
+            # Note: The streaming method sends messages directly to websocket
+            # No need to send additional response here as it's handled in the streaming method
             
             # Save to database if consultation_id provided
             if consultation_id:
-                await save_chat_messages(consultation_id, current_user, user_message, ai_response.get("response"), language)
+                await save_chat_messages(consultation_id, current_user, user_message, ai_response_text, language)
                 
         except Exception as e:
             error_response = {
@@ -299,3 +359,39 @@ async def get_chat_history(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving chat history: {str(e)}")
+
+@router.get("/memory-status")
+async def get_memory_status(
+    current_user: User = Depends(get_current_user_from_token)
+):
+    """Get conversation memory status for current user"""
+    try:
+        user_id = str(current_user.id)
+        memory = manager.get_conversation_memory(user_id)
+        
+        return {
+            "user_id": user_id,
+            "total_messages": len(memory),
+            "memory_preview": memory[-5:] if memory else [],  # Last 5 messages
+            "has_memory": len(memory) > 0
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving memory status: {str(e)}")
+
+@router.post("/clear-memory")
+async def clear_memory(
+    current_user: User = Depends(get_current_user_from_token)
+):
+    """Clear conversation memory for current user"""
+    try:
+        user_id = str(current_user.id)
+        manager.clear_conversation_memory(user_id)
+        
+        return {
+            "message": "Conversation memory cleared successfully",
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error clearing memory: {str(e)}")

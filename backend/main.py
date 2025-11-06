@@ -10,13 +10,13 @@ import uvicorn
 from dotenv import load_dotenv
 import os
 
+# Load environment variables FIRST
+load_dotenv()
+
 from api.routes import auth, patients, doctors, consultations, analytics, users, notifications, health_records, medications
 from api.routes import ai_assistant as ai, chat_websocket
 from database.connection import connect_to_mongo, close_mongo_connection
 from models.database import init_db
-
-# Load environment variables
-load_dotenv()
 
 # Security
 security = HTTPBearer()

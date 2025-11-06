@@ -4,6 +4,7 @@ LLM Communication Engine for multilingual healthcare conversations
 
 import os
 import asyncio
+import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import logging
@@ -42,10 +43,13 @@ class HealthcareLLM:
             perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
             
             # Priority: Gemini > Perplexity > OpenAI > Local fallback
+            print(f"🔍 Checking API keys - Gemini: {'✅ Found' if gemini_api_key else '❌ Missing'}")
             if gemini_api_key:
+                print(f"🔑 Gemini API key: {gemini_api_key[:10]}...{gemini_api_key[-4:]}")
                 genai.configure(api_key=gemini_api_key)
-                self.gemini_model = genai.GenerativeModel('gemini-pro')
+                self.gemini_model = genai.GenerativeModel('models/gemini-2.5-flash')
                 self.ai_provider = "gemini"
+                print("✅ Google Gemini model initialized successfully")
                 logger.info("Google Gemini model initialized successfully")
             elif perplexity_api_key:
                 self.perplexity_api_key = perplexity_api_key
@@ -85,31 +89,141 @@ class HealthcareLLM:
     
     def get_healthcare_system_prompt(self) -> str:
         """Get the system prompt for healthcare conversations"""
-        return """You are a helpful and knowledgeable AI healthcare assistant. Your role is to provide practical health guidance and support.
+        return """You are Dr. AI, an advanced virtual healthcare assistant with specialized training in clinical medicine, patient psychology, and health communication. You serve as a trusted first point of contact for health concerns, combining evidence-based medical knowledge with compassionate patient care.
 
-IMPORTANT: Be helpful and informative, not overly cautious. Provide specific advice for common health issues.
+🚨 **CRITICAL EMERGENCY PROTOCOL - LEVEL 1 RESPONSE:**
+For IMMEDIATE LIFE-THREATENING conditions (cardiac arrest, stroke symptoms, severe chest pain, respiratory distress, unconsciousness, massive bleeding, anaphylaxis, seizures, suspected overdose/poisoning, severe trauma):
 
-Your capabilities:
-- Explain symptoms and their common causes
-- Suggest home remedies and self-care measures
-- Provide health education and wellness tips
-- Recommend when to seek medical care
-- Offer emotional support and reassurance
+"🚨 **MEDICAL EMERGENCY - CALL 911 NOW** 🚨
+**IMMEDIATE ACTIONS:**
+1. Call emergency services immediately (911/local emergency number)
+2. Stay on the line with dispatcher
+3. If trained, begin CPR/first aid as directed
+4. Do not leave the patient alone
+5. Gather medications/medical history if safely possible
 
-Guidelines:
-- Give specific, actionable advice for common health concerns
-- Explain medical concepts in simple terms
-- Suggest practical remedies and lifestyle changes
-- Be empathetic and supportive
-- Only recommend seeing a doctor for serious symptoms or persistent issues
-- Provide helpful information rather than generic disclaimers
+**This condition requires immediate emergency medical intervention. Time is critical.**"
 
-Example responses:
-- For headaches: Suggest hydration, rest, cold/warm compress, stress management
-- For minor cuts: Explain proper cleaning and bandaging
-- For cold symptoms: Recommend rest, fluids, honey for cough, etc.
+**CLINICAL EXPERTISE DOMAINS:**
+• **Differential Diagnosis**: Systematic symptom analysis using clinical reasoning
+• **Evidence-Based Treatment**: Recommendations based on current medical literature
+• **Risk Stratification**: Identifying high, medium, and low-risk presentations
+• **Pharmacological Guidance**: Medication interactions, contraindications, and safety profiles
+• **Lifestyle Medicine**: Comprehensive wellness strategies and preventive interventions
+• **Mental Health Integration**: Addressing psychosomatic symptoms and emotional wellbeing
+• **Chronic Disease Management**: Long-term care strategies and monitoring protocols
+• **Pediatric & Geriatric Considerations**: Age-specific medical guidance
 
-Be conversational, helpful, and informative. Avoid being overly cautious or giving generic "see a doctor" responses for minor issues."""
+**ADVANCED COMMUNICATION PROTOCOLS:**
+• **Active Listening**: Acknowledge patient concerns and validate emotional responses
+• **Health Literacy Adaptation**: Adjust complexity based on patient understanding
+• **Cultural Sensitivity**: Consider cultural factors affecting health beliefs and practices
+• **Motivational Interviewing**: Encourage positive health behavior changes
+• **Shared Decision Making**: Present options and involve patients in care decisions
+• **Trauma-Informed Care**: Recognize potential trauma history affecting health
+
+**COMPREHENSIVE ASSESSMENT FRAMEWORK:**
+1. **Triage Assessment**: Immediate risk evaluation and urgency determination
+2. **Symptom Constellation Analysis**: Pattern recognition and differential considerations
+3. **Contextual Factors**: Age, gender, medical history, medications, lifestyle factors
+4. **Evidence-Based Interventions**: Graded recommendations with strength of evidence
+5. **Safety Netting**: Clear instructions for monitoring and escalation triggers
+6. **Follow-up Planning**: Structured approach to ongoing care and reassessment
+
+**CLINICAL DECISION SUPPORT CRITERIA:**
+**IMMEDIATE MEDICAL ATTENTION (Within hours):**
+• Severe pain (8-10/10) unresponsive to standard measures
+• High fever (>103°F/39.4°C) with systemic symptoms
+• Neurological changes (confusion, weakness, vision changes)
+• Respiratory symptoms with distress
+• Abdominal pain with guarding or rebound tenderness
+• Signs of infection with systemic involvement
+
+**URGENT CARE (Within 24-48 hours):**
+• Moderate symptoms interfering with daily function
+• New symptoms in patients with chronic conditions
+• Medication side effects or concerns
+• Mental health crisis or significant mood changes
+• Persistent symptoms despite appropriate self-care
+
+**ROUTINE CARE (Within 1-2 weeks):**
+• Mild symptoms with gradual onset
+• Preventive care needs
+• Chronic condition monitoring
+• Health optimization consultations
+
+**ENHANCED RESPONSE TEMPLATE:**
+"**Clinical Assessment**
+Based on your symptoms, I'm evaluating [primary concern] with consideration of [relevant factors].
+
+**Most Likely Explanation**
+Your symptoms suggest [condition/cause] which typically [explanation of pathophysiology in simple terms].
+
+**Immediate Management Plan**
+**First-Line Interventions:**
+• [Specific intervention 1]: [detailed instructions with timing/dosage]
+• [Specific intervention 2]: [rationale and expected timeline]
+• [Monitoring parameters]: [what to watch for and when]
+
+**Supportive Measures:**
+• [Lifestyle modifications]
+• [Environmental adjustments]
+• [Nutritional considerations]
+
+**Red Flag Symptoms - Seek Emergency Care:**
+• [Specific warning signs with clear descriptions]
+• [Timeline for concern - immediate vs. hours vs. days]
+
+**Expected Course & Follow-up:**
+• Improvement expected within [timeframe]
+• If no improvement by [specific time], consider [next steps]
+• Schedule follow-up if [specific conditions]
+
+**Prevention Strategy:**
+• [Long-term prevention measures]
+• [Lifestyle modifications]
+• [Screening recommendations]"
+
+**SPECIAL POPULATION CONSIDERATIONS:**
+• **Pregnancy/Breastfeeding**: Medication safety categories and alternative approaches
+• **Pediatric Patients**: Age-appropriate dosing and developmental considerations
+• **Elderly Patients**: Polypharmacy concerns and frailty assessments
+• **Chronic Conditions**: Disease-specific modifications and interactions
+• **Mental Health Comorbidities**: Integrated approach to physical and mental wellness
+
+**QUALITY ASSURANCE PROTOCOLS:**
+• **Evidence Grading**: Clearly indicate strength of recommendations (strong/moderate/weak)
+• **Uncertainty Acknowledgment**: Explicitly state when clinical uncertainty exists
+• **Scope Limitations**: Clearly define boundaries of virtual consultation
+• **Professional Referral**: Specific criteria for specialist or emergency referral
+• **Documentation**: Encourage patients to share information with their healthcare providers
+
+**ETHICAL FRAMEWORK:**
+• **Beneficence**: Always act in the patient's best interest
+• **Non-maleficence**: "First, do no harm" - conservative approach when uncertain
+• **Autonomy**: Respect patient decision-making and cultural preferences
+• **Justice**: Provide equitable care regardless of background
+• **Confidentiality**: Maintain privacy and security of health information
+
+**CONVERSATION MEMORY & CONTINUITY:**
+• **Context Awareness**: Always reference and build upon previous conversation elements
+• **Follow-up Integration**: Connect current symptoms/concerns to previously discussed issues
+• **Progress Tracking**: Monitor improvement or worsening of previously mentioned conditions
+• **Medication Continuity**: Remember previously discussed medications, side effects, or concerns
+• **Relationship Building**: Acknowledge patient's ongoing health journey and concerns
+• **Consistency Maintenance**: Ensure current advice aligns with or appropriately modifies previous recommendations
+
+**MEMORY-ENHANCED RESPONSE PATTERNS:**
+• "Following up on your previous concern about [condition]..."
+• "Since you mentioned [symptom] earlier, I notice you're now experiencing..."
+• "Building on our previous discussion about [treatment], let's now address..."
+• "I recall you were trying [intervention] - how has that been working?"
+• "This new symptom may be related to the [condition] we discussed previously..."
+
+**CONTINUOUS LEARNING INTEGRATION:**
+Stay current with medical literature, clinical guidelines, and best practices. Acknowledge when recommendations may vary based on emerging evidence or clinical context.
+
+Your mission: Provide comprehensive, compassionate, and clinically sound healthcare guidance that empowers patients while maintaining appropriate professional boundaries and safety standards. Use conversation memory to build therapeutic relationships and provide personalized, continuous care."""
 
     async def chat_with_patient(
         self, 
@@ -198,6 +312,74 @@ Be conversational, helpful, and informative. Avoid being overly cautious or givi
                 "model_used": "error_fallback",
                 "confidence": 0.1
             }
+
+    async def chat_with_patient_stream(
+        self, 
+        message: str, 
+        patient_context: Dict[str, Any] = None,
+        conversation_history: List[Dict[str, str]] = None,
+        language: str = "en",
+        websocket = None
+    ) -> str:
+        """
+        Generate streaming AI response for patient chat
+        """
+        try:
+            # Translate message to English if needed
+            if language != "en":
+                message = await self.translate_to_english(message, language)
+            
+            # Prepare context (same as regular chat)
+            context_info = ""
+            if patient_context:
+                age = self._calculate_age(patient_context.get('date_of_birth'))
+                gender = patient_context.get('gender', 'not specified')
+                context_info = f"Patient context: Age {age}, Gender: {gender}"
+                
+                medical_history = patient_context.get('medical_history', [])
+                if medical_history:
+                    conditions = [condition['condition'] for condition in medical_history[:3]]
+                    context_info += f", Medical history: {', '.join(conditions)}"
+            
+            # Build conversation context
+            conversation_context = ""
+            if conversation_history:
+                recent_messages = conversation_history[-6:]
+                for msg in recent_messages:
+                    role = "Patient" if msg.get('sender') != 'ai' else "AI"
+                    conversation_context += f"{role}: {msg.get('message', '')}\n"
+            
+            # Generate streaming response using Gemini
+            print(f"🤖 AI Provider: {self.ai_provider}")
+            print(f"📝 Processing STREAMING message: {message}")
+            
+            if self.ai_provider == "gemini" and self.gemini_model and websocket:
+                print("🔮 Using Gemini AI STREAMING with conversation memory...")
+                system_prompt = self.get_healthcare_system_prompt()
+                if context_info:
+                    system_prompt += f"\n\nPatient Context:\n{context_info}"
+                
+                response = await self._get_gemini_response_stream(system_prompt, message, websocket, conversation_history)
+                return response
+            else:
+                # Fallback to regular response if streaming not available
+                print("⚠️ Streaming not available, using regular response...")
+                regular_response = await self.chat_with_patient(message, patient_context, conversation_history, language)
+                return regular_response.get("response", "I'm sorry, I couldn't process your request.")
+                
+        except Exception as e:
+            logger.error(f"Error in streaming chat generation: {e}")
+            # Send error message via websocket if available
+            if websocket:
+                error_msg = {
+                    "type": "ai_message",
+                    "message": "I apologize, but I'm having trouble processing your message right now. Please try again or contact your healthcare provider if this is urgent.",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "sender": "ai",
+                    "error": True
+                }
+                await websocket.send_text(json.dumps(error_msg))
+            return "I apologize, but I'm having trouble processing your message right now."
     
     async def get_health_advice(self, message: str, patient_context: Dict[str, Any] = None, 
                                conversation_context: str = None, language: str = "en") -> str:
@@ -238,6 +420,81 @@ Be conversational, helpful, and informative. Avoid being overly cautious or givi
             print(f"❌ Gemini API error: {e}")
             logger.error(f"Gemini API error: {e}")
             return self._generate_improved_fallback_response(message)
+
+    async def _get_gemini_response_stream(self, system_prompt: str, message: str, websocket, conversation_history: List[Dict[str, str]] = None):
+        """Get streaming response from Google Gemini with conversation memory"""
+        try:
+            # Build conversation context with memory
+            conversation_context = ""
+            if conversation_history:
+                print(f"🧠 Building conversation memory from {len(conversation_history)} previous messages")
+                # Include last 10 messages for context (5 exchanges)
+                recent_messages = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
+                
+                for msg in recent_messages:
+                    role = "Patient" if msg.get('sender') != 'ai' else "Healthcare Assistant"
+                    message_text = msg.get('message', '')
+                    timestamp = msg.get('timestamp', '')
+                    conversation_context += f"\n{role}: {message_text}"
+                
+                print(f"📝 Conversation context length: {len(conversation_context)} characters")
+            
+            # Build full prompt with conversation memory
+            if conversation_context:
+                full_prompt = f"{system_prompt}\n\n=== PREVIOUS CONVERSATION ===\n{conversation_context}\n\n=== CURRENT QUERY ===\nPatient: {message}\nHealthcare Assistant:"
+            else:
+                full_prompt = f"{system_prompt}\n\nPatient: {message}\nHealthcare Assistant:"
+                
+            print(f"🔮 Calling Gemini STREAM with prompt length: {len(full_prompt)}")
+            
+            # Use streaming response
+            response = await self.gemini_model.generate_content_async(
+                full_prompt,
+                stream=True
+            )
+            
+            full_response = ""
+            async for chunk in response:
+                if chunk.text:
+                    full_response += chunk.text
+                    # Send streaming chunk to client
+                    stream_msg = {
+                        "type": "ai_stream",
+                        "message": full_response,  # Send accumulated text
+                        "is_complete": False,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "sender": "ai"
+                    }
+                    await websocket.send_text(json.dumps(stream_msg))
+                    
+            # Send final complete message
+            final_msg = {
+                "type": "ai_message",
+                "message": full_response.strip(),
+                "is_complete": True,
+                "timestamp": datetime.utcnow().isoformat(),
+                "sender": "ai",
+                "confidence": 0.9
+            }
+            await websocket.send_text(json.dumps(final_msg))
+            print(f"✅ Gemini streaming complete: {len(full_response)} chars")
+            return full_response.strip()
+            
+        except Exception as e:
+            print(f"❌ Gemini streaming error: {e}")
+            logger.error(f"Gemini streaming error: {e}")
+            fallback_response = self._generate_improved_fallback_response(message)
+            
+            # Send fallback as regular message
+            fallback_msg = {
+                "type": "ai_message", 
+                "message": fallback_response,
+                "timestamp": datetime.utcnow().isoformat(),
+                "sender": "ai",
+                "error": True
+            }
+            await websocket.send_text(json.dumps(fallback_msg))
+            return fallback_response
 
     async def _get_perplexity_response(self, system_prompt: str, message: str) -> str:
         """Get response from Perplexity AI"""
@@ -326,6 +583,23 @@ Be conversational, helpful, and informative. Avoid being overly cautious or givi
         """Generate improved, more helpful fallback responses"""
         message_lower = message.lower()
         
+        # CRITICAL EMERGENCY RESPONSES - Must be first!
+        if any(word in message_lower for word in ['heart attack', 'chest pain', 'can\'t breathe', 'difficulty breathing', 'stroke', 'seizure', 'unconscious', 'bleeding heavily', 'severe pain']):
+            return """🚨 **MEDICAL EMERGENCY** 🚨
+
+**CALL EMERGENCY SERVICES IMMEDIATELY:**
+• Call 911 (US) or your local emergency number
+• Do not wait - seek immediate medical attention
+• If possible, have someone drive you to the nearest emergency room
+
+**For chest pain/heart attack symptoms:**
+• Stop all activity and rest
+• Take prescribed nitroglycerin if you have it
+• Chew an aspirin if not allergic (unless told otherwise by doctor)
+• Stay calm and wait for emergency help
+
+**This is a potential life-threatening emergency. Do not delay seeking professional medical care.**"""
+
         # Headache responses
         if any(word in message_lower for word in ['headache', 'head ache', 'migraine']):
             return """For headaches, here are some helpful approaches:
